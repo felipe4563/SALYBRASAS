@@ -1,0 +1,100 @@
+const { DataTypes } = require('sequelize');
+const sequelize = require('../config/database');
+
+const RolesPermisos = sequelize.define('roles_permisos', {
+  rol_id: { type: DataTypes.INTEGER.UNSIGNED },
+  permiso_id: { type: DataTypes.INTEGER.UNSIGNED },
+}, { tableName: 'roles_permisos', timestamps: false });
+
+const Rol = require('./Rol');
+const Permiso = require('./Permiso');
+const Usuario = require('./Usuario');
+const Area = require('./Area');
+const Mesa = require('./Mesa');
+const Categoria = require('./Categoria');
+const Producto = require('./Producto');
+const Cliente = require('./Cliente');
+const SesionCaja = require('./SesionCaja');
+const Pedido = require('./Pedido');
+const DetallePedido = require('./DetallePedido');
+const DetalleArqueo = require('./DetalleArqueo');
+const Gasto = require('./Gasto');
+const LibroCaja = require('./LibroCaja');
+const Proveedor = require('./Proveedor');
+const Compra = require('./Compra');
+const DetalleCompra = require('./DetalleCompra');
+const RegistroInventario = require('./RegistroInventario');
+const Configuracion = require('./Configuracion');
+const Reservacion = require('./Reservacion');
+
+// Roles y Permisos
+Rol.belongsToMany(Permiso, { through: RolesPermisos, foreignKey: 'rol_id', otherKey: 'permiso_id', as: 'permisos' });
+Permiso.belongsToMany(Rol, { through: RolesPermisos, foreignKey: 'permiso_id', otherKey: 'rol_id', as: 'roles' });
+
+// Usuario
+Usuario.belongsTo(Rol, { foreignKey: 'rol_id', as: 'rol' });
+Rol.hasMany(Usuario, { foreignKey: 'rol_id', as: 'usuarios' });
+
+// Mesas
+Mesa.belongsTo(Area, { foreignKey: 'area_id', as: 'area' });
+Area.hasMany(Mesa, { foreignKey: 'area_id', as: 'mesas' });
+
+// Productos
+Producto.belongsTo(Categoria, { foreignKey: 'categoria_id', as: 'categoria' });
+Categoria.hasMany(Producto, { foreignKey: 'categoria_id', as: 'productos' });
+
+// Pedidos
+Pedido.belongsTo(Mesa, { foreignKey: 'mesa_id', as: 'mesa' });
+Pedido.belongsTo(Usuario, { foreignKey: 'usuario_id', as: 'usuario' });
+Pedido.belongsTo(Cliente, { foreignKey: 'cliente_id', as: 'cliente' });
+Pedido.belongsTo(SesionCaja, { foreignKey: 'sesion_caja_id', as: 'sesion_caja' });
+Pedido.hasMany(DetallePedido, { foreignKey: 'pedido_id', as: 'detalles' });
+DetallePedido.belongsTo(Pedido, { foreignKey: 'pedido_id' });
+DetallePedido.belongsTo(Producto, { foreignKey: 'producto_id', as: 'producto' });
+
+// SesionCaja
+SesionCaja.belongsTo(Usuario, { foreignKey: 'usuario_id', as: 'usuario' });
+SesionCaja.hasMany(Pedido, { foreignKey: 'sesion_caja_id', as: 'pedidos' });
+
+// Caja
+SesionCaja.hasMany(DetalleArqueo, { foreignKey: 'sesion_caja_id', as: 'detalle_arqueo' });
+DetalleArqueo.belongsTo(SesionCaja, { foreignKey: 'sesion_caja_id' });
+
+SesionCaja.hasMany(Gasto, { foreignKey: 'sesion_caja_id', as: 'gastos' });
+Gasto.belongsTo(SesionCaja, { foreignKey: 'sesion_caja_id' });
+Gasto.belongsTo(Usuario, { foreignKey: 'usuario_id', as: 'usuario' });
+
+SesionCaja.hasMany(LibroCaja, { foreignKey: 'sesion_caja_id', as: 'libro_caja' });
+LibroCaja.belongsTo(SesionCaja, { foreignKey: 'sesion_caja_id', as: 'sesion_caja' });
+LibroCaja.belongsTo(Usuario, { foreignKey: 'usuario_id', as: 'usuario' });
+
+// Compras
+Proveedor.hasMany(Compra, { foreignKey: 'proveedor_id', as: 'compras' });
+Compra.belongsTo(Proveedor, { foreignKey: 'proveedor_id', as: 'proveedor' });
+Compra.belongsTo(Usuario, { foreignKey: 'usuario_id', as: 'usuario' });
+Compra.hasMany(DetalleCompra, { foreignKey: 'compra_id', as: 'detalles' });
+DetalleCompra.belongsTo(Compra, { foreignKey: 'compra_id' });
+DetalleCompra.belongsTo(Producto, { foreignKey: 'producto_id', as: 'producto' });
+
+// Inventario
+RegistroInventario.belongsTo(Producto, { foreignKey: 'producto_id', as: 'producto' });
+RegistroInventario.belongsTo(Usuario, { foreignKey: 'usuario_id', as: 'usuario' });
+Producto.hasMany(RegistroInventario, { foreignKey: 'producto_id', as: 'movimientos' });
+
+// Reservaciones
+Reservacion.belongsTo(Mesa, { foreignKey: 'mesa_id', as: 'mesa' });
+Mesa.hasMany(Reservacion, { foreignKey: 'mesa_id', as: 'reservaciones' });
+
+module.exports = {
+  sequelize,
+  Rol, Permiso, Usuario,
+  Area, Mesa,
+  Categoria, Producto,
+  Cliente,
+  SesionCaja, Pedido, DetallePedido,
+  DetalleArqueo, Gasto, LibroCaja,
+  Proveedor, Compra, DetalleCompra,
+  RegistroInventario,
+  Configuracion,
+  Reservacion,
+};

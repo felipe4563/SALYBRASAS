@@ -1,0 +1,5 @@
+# Agente de impresión térmica (compilado localmente)
+print-agent/
+node_modules/
+
+# Dumps de base de datos (no subir datos/backups al repo)

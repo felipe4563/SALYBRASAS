@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(bash \"C:/Users/ASUS/.claude/plugins/cache/claude-plugins-official/superpowers/6.0.3/skills/subagent-driven-development/scripts/review-package\" \"d1fb5d3\" \"HEAD\")",
+      "Bash(bash \"C:/Users/ASUS/.claude/plugins/cache/claude-plugins-official/superpowers/6.0.3/skills/subagent-driven-development/scripts/review-package\" \"225bf7b\" \"HEAD\")",
+      "Bash(node -e \"require\\('./src/app'\\); console.log\\('OK'\\)\")",
+      "Read(//c/Users/ASUS/.claude/plugins/cache/claude-plugins-official/superpowers/6.0.3/skills/subagent-driven-development/**)",
+      "Bash(C:\\\\Users\\\\ASUS\\\\.claude\\\\plugins\\\\cache\\\\claude-plugins-official\\\\superpowers\\\\6.0.3\\\\skills\\\\subagent-driven-development\\\\scripts\\\\task-brief \"c:/Users/ASUS/OneDrive/Escritorio/TODO/SISTEMAS/RESTAURANTE/docs/superpowers/plans/2026-06-21-plan-2-backend-modulos.md\" 1)",
+      "Bash(bash \"C:/Users/ASUS/.claude/plugins/cache/claude-plugins-official/superpowers/6.0.3/skills/subagent-driven-development/scripts/task-brief\" \"c:/Users/ASUS/OneDrive/Escritorio/TODO/SISTEMAS/RESTAURANTE/docs/superpowers/plans/2026-06-21-plan-2-backend-modulos.md\" 1)",
+      "PowerShell(New-Item -ItemType Directory -Force \"C:\\\\Users\\\\ASUS\\\\OneDrive\\\\Escritorio\\\\TODO\\\\SISTEMAS\\\\RESTAURANTE\\\\backend\\\\src\\\\modules\\\\usuarios\")",
+      "Bash(bash \"C:/Users/ASUS/.claude/plugins/cache/claude-plugins-official/superpowers/6.0.3/skills/subagent-driven-development/scripts/review-package\" \"1ac6f24\" \"HEAD\")",
+      "Bash(npx jest *)",
+      "Bash(bash \"C:/Users/ASUS/.claude/plugins/cache/claude-plugins-official/superpowers/6.0.3/skills/subagent-driven-development/scripts/review-package\" \"5edd466\" \"HEAD\")",
+      "Bash(bash \"C:/Users/ASUS/.claude/plugins/cache/claude-plugins-official/superpowers/6.0.3/skills/subagent-driven-development/scripts/task-brief\" \"c:/Users/ASUS/OneDrive/Escritorio/TODO/SISTEMAS/RESTAURANTE/docs/superpowers/plans/2026-06-21-plan-2-backend-modulos.md\" 9)",
+      "Bash(git -C \"c:/Users/ASUS/OneDrive/Escritorio/TODO/SISTEMAS/RESTAURANTE/backend\" rev-parse HEAD)",
+      "Bash(bash \"C:/Users/ASUS/.claude/plugins/cache/claude-plugins-official/superpowers/6.0.3/skills/subagent-driven-development/scripts/review-package\" \"f8eede6\" \"HEAD\")",
+      "Bash(bash \"C:/Users/ASUS/.claude/plugins/cache/claude-plugins-official/superpowers/6.0.3/skills/subagent-driven-development/scripts/task-brief\" \"c:/Users/ASUS/OneDrive/Escritorio/TODO/SISTEMAS/RESTAURANTE/docs/superpowers/plans/2026-06-21-plan-2-backend-modulos.md\" 10)",
+      "PowerShell(New-Item -ItemType Directory -Force \"C:\\\\Users\\\\ASUS\\\\OneDrive\\\\Escritorio\\\\TODO\\\\SISTEMAS\\\\RESTAURANTE\\\\backend\\\\src\\\\modules\\\\configuracion\")",
+      "Bash(bash \"C:/Users/ASUS/.claude/plugins/cache/claude-plugins-official/superpowers/6.0.3/skills/subagent-driven-development/scripts/review-package\" \"3bc189c\" \"HEAD\")",
+      "PowerShell(New-Item -ItemType Directory -Force \"C:\\\\Users\\\\ASUS\\\\OneDrive\\\\Escritorio\\\\TODO\\\\SISTEMAS\\\\RESTAURANTE\\\\backend\\\\src\\\\modules\\\\reservaciones\")",
+      "Bash(bash \"C:/Users/ASUS/.claude/plugins/cache/claude-plugins-official/superpowers/6.0.3/skills/subagent-driven-development/scripts/review-package\" \"1179a08\" \"HEAD\")"
+    ]
+  }
+}
