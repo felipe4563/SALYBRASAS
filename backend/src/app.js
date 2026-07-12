@@ -6,6 +6,7 @@ const manejarErrores = require('./middlewares/errores');
 const uploadsRoutes = require('./modules/uploads/uploads.routes');
 const authRoutes = require('./modules/auth/auth.routes');
 const rolesRoutes = require('./modules/roles/roles.routes');
+const sucursalesRoutes = require('./modules/sucursales/sucursales.routes');
 const usuariosRoutes = require('./modules/usuarios/usuarios.routes');
 const mesasRoutes = require('./modules/mesas/mesas.routes');
 const areasRoutes = require('./modules/mesas/areas.routes');
@@ -38,6 +39,7 @@ app.get('/api/v1/salud', (_req, res) => {
 
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/roles', rolesRoutes);
+app.use('/api/v1/sucursales', sucursalesRoutes);
 app.use('/api/v1/usuarios', usuariosRoutes);
 app.use('/api/v1/mesas', mesasRoutes);
 app.use('/api/v1/areas', areasRoutes);
