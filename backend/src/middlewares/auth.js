@@ -24,12 +24,16 @@ async function auth(req, res, next) {
       return res.status(401).json({ ok: false, mensaje: 'Usuario no encontrado' });
     }
 
+    const sucursalId = payload.sucursal_id ?? null;
+
     req.usuario = {
       id: usuario.id,
       nombre: usuario.nombre,
       email: usuario.email,
       rol_id: usuario.rol_id,
       permisos: usuario.rol.permisos.map(p => `${p.modulo}.${p.accion}`),
+      sucursal_id: sucursalId,
+      acceso_todas: sucursalId === null,
     };
 
     next();
