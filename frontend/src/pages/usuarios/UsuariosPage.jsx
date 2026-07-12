@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getUsuarios, crearUsuario, actualizarUsuario, eliminarUsuario } from '../../api/usuarios';
+import { getUsuarios, crearUsuario, actualizarUsuario, eliminarUsuario, actualizarSucursalesUsuario } from '../../api/usuarios';
 import { getRoles } from '../../api/roles';
+import { getSucursales } from '../../api/sucursales';
 import { useAuthStore } from '../../store/authStore';
 import { UserPlus, Pencil, UserX, UserCheck, X, Eye, EyeOff, Shield, ChevronDown, ChevronUp } from 'lucide-react';
 
@@ -19,7 +20,7 @@ function BadgeEstado({ activo }) {
 }
 
 /* ─── Modal crear / editar ────────────────────────────────────── */
-function ModalUsuario({ usuario, roles, onClose, onGuardar }) {
+function ModalUsuario({ usuario, roles, sucursalesCatalogo, onClose, onGuardar, onGuardarSucursales }) {
   const esNuevo = !usuario;
   const [form, setForm] = useState(
     usuario
@@ -28,6 +29,19 @@ function ModalUsuario({ usuario, roles, onClose, onGuardar }) {
   );
   const [mostrarPass, setMostrarPass] = useState(false);
   const [error, setError] = useState('');
+  const [sucursalIds, setSucursalIds] = useState(
+    new Set((usuario?.sucursales ?? []).map(s => s.id))
+  );
+  const [accesoTodas, setAccesoTodas] = useState(!!usuario?.acceso_todas_sucursales);
+
+  const toggleSucursal = (id) => {
+    setSucursalIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
@@ -138,6 +152,46 @@ function ModalUsuario({ usuario, roles, onClose, onGuardar }) {
                 <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${form.activo ? 'translate-x-6' : 'translate-x-1'}`} />
               </button>
               <span className="text-xs text-gray-500 dark:text-gray-400">{form.activo ? 'Activo' : 'Inactivo'}</span>
+            </div>
+          )}
+
+          {!esNuevo && (
+            <div className="pt-2 border-t border-gray-100 dark:border-gray-700 space-y-2.5">
+              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300">Sucursales</label>
+
+              <label className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={accesoTodas}
+                  onChange={e => setAccesoTodas(e.target.checked)}
+                  className="w-3.5 h-3.5 rounded accent-blue-600"
+                />
+                Acceso a todas las sucursales
+              </label>
+
+              {!accesoTodas && (
+                <div className="max-h-32 overflow-y-auto space-y-1 rounded-lg border border-gray-200 dark:border-gray-600 p-2">
+                  {sucursalesCatalogo.map(s => (
+                    <label key={s.id} className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={sucursalIds.has(s.id)}
+                        onChange={() => toggleSucursal(s.id)}
+                        className="w-3.5 h-3.5 rounded accent-blue-600"
+                      />
+                      {s.nombre}
+                    </label>
+                  ))}
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={() => onGuardarSucursales({ sucursal_ids: [...sucursalIds], acceso_todas_sucursales: accesoTodas })}
+                className="w-full py-1.5 text-xs rounded-lg border border-blue-300 dark:border-blue-600 text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/20"
+              >
+                Guardar sucursales
+              </button>
             </div>
           )}
 
@@ -266,12 +320,23 @@ export default function UsuariosPage() {
     staleTime: 60_000,
   });
 
+  const { data: sucursalesCatalogo = [] } = useQuery({
+    queryKey: ['sucursales'],
+    queryFn: getSucursales,
+    enabled: puedoEditar,
+    staleTime: 60_000,
+  });
+
   const invalidar = () => qc.invalidateQueries({ queryKey: ['usuarios'] });
 
   const mutCrear = useMutation({ mutationFn: crearUsuario, onSuccess: () => { invalidar(); setModal(null); } });
   const mutEditar = useMutation({ mutationFn: ({ id, datos }) => actualizarUsuario(id, datos), onSuccess: () => { invalidar(); setModal(null); } });
   const mutDesactivar = useMutation({ mutationFn: (id) => eliminarUsuario(id), onSuccess: () => { invalidar(); setConfirmar(null); } });
   const mutActivar = useMutation({ mutationFn: (id) => actualizarUsuario(id, { activo: 1 }), onSuccess: invalidar });
+  const mutSucursales = useMutation({
+    mutationFn: ({ id, datos }) => actualizarSucursalesUsuario(id, datos),
+    onSuccess: invalidar,
+  });
 
   const [modal, setModal] = useState(null);       // null | { usuario?: obj }
   const [confirmar, setConfirmar] = useState(null); // null | obj usuario
@@ -435,8 +500,10 @@ export default function UsuariosPage() {
         <ModalUsuario
           usuario={modal.usuario}
           roles={roles}
+          sucursalesCatalogo={sucursalesCatalogo}
           onClose={() => setModal(null)}
           onGuardar={guardarUsuario}
+          onGuardarSucursales={modal.usuario ? (datos) => mutSucursales.mutate({ id: modal.usuario.id, datos }) : undefined}
         />
       )}
 
