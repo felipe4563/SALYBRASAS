@@ -43,6 +43,9 @@ export default function LoginPage() {
   const [mostrarContrasena, setMostrarContrasena] = useState(false);
   const [error, setError]                       = useState('');
   const [cargando, setCargando]                 = useState(false);
+  const [paso, setPaso]                         = useState('credenciales'); // 'credenciales' | 'sucursal'
+  const [preToken, setPreToken]                 = useState(null);
+  const [sucursales, setSucursales]             = useState([]);
   const setAuth   = useAuthStore((s) => s.setAuth);
   const navigate  = useNavigate();
 
@@ -71,13 +74,41 @@ export default function LoginPage() {
     setCargando(true);
     try {
       const { data } = await api.post('/auth/login', { email, contrasena });
-      setAuth(data.datos);
-      navigate('/');
+      if (data.datos.requiere_sucursal) {
+        setPreToken(data.datos.pre_token);
+        setSucursales(data.datos.sucursales);
+        setPaso('sucursal');
+      } else {
+        setAuth(data.datos);
+        navigate('/');
+      }
     } catch (err) {
       setError(err.response?.data?.mensaje ?? 'Error al iniciar sesión');
     } finally {
       setCargando(false);
     }
+  }
+
+  async function handleElegirSucursal(sucursalId) {
+    setError('');
+    setCargando(true);
+    try {
+      const { data } = await api.post('/auth/login/sucursal', { pre_token: preToken, sucursal_id: sucursalId });
+      setAuth(data.datos);
+      navigate('/');
+    } catch (err) {
+      setError(err.response?.data?.mensaje ?? 'Error al seleccionar la sucursal');
+      setPaso('credenciales');
+    } finally {
+      setCargando(false);
+    }
+  }
+
+  function volverACredenciales() {
+    setPaso('credenciales');
+    setPreToken(null);
+    setSucursales([]);
+    setError('');
   }
 
   return (
@@ -127,67 +158,101 @@ export default function LoginPage() {
             Inicia sesión para continuar
           </p>
 
-          <form onSubmit={handleSubmit} className="space-y-5">
+          {paso === 'credenciales' ? (
+            <form onSubmit={handleSubmit} className="space-y-5">
 
-            {/* Email */}
-            <div className="space-y-1.5">
-              <label className="block text-[11px] font-bold uppercase tracking-[0.12em] text-[#B8A896] dark:text-[#5A4A38]">
-                Correo electrónico
-              </label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                autoComplete="email"
-                placeholder="correo@restaurante.com"
-                className="w-full bg-[#FDFAF7] dark:bg-[#160F08] border border-[#E2D9CE] dark:border-[#3A2412] rounded-xl px-4 py-3 text-sm text-[#1C1208] dark:text-[#F0E8D8] placeholder-[#CCC0B4] dark:placeholder-[#4A3A2E] focus:outline-none focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400 dark:focus:border-amber-600 transition"
-              />
-            </div>
-
-            {/* Password */}
-            <div className="space-y-1.5">
-              <label className="block text-[11px] font-bold uppercase tracking-[0.12em] text-[#B8A896] dark:text-[#5A4A38]">
-                Contraseña
-              </label>
-              <div className="relative">
+              {/* Email */}
+              <div className="space-y-1.5">
+                <label className="block text-[11px] font-bold uppercase tracking-[0.12em] text-[#B8A896] dark:text-[#5A4A38]">
+                  Correo electrónico
+                </label>
                 <input
-                  type={mostrarContrasena ? 'text' : 'password'}
-                  value={contrasena}
-                  onChange={(e) => setContrasena(e.target.value)}
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
                   required
-                  autoComplete="current-password"
-                  placeholder="••••••••"
-                  className="w-full bg-[#FDFAF7] dark:bg-[#160F08] border border-[#E2D9CE] dark:border-[#3A2412] rounded-xl px-4 py-3 pr-12 text-sm text-[#1C1208] dark:text-[#F0E8D8] placeholder-[#CCC0B4] dark:placeholder-[#4A3A2E] focus:outline-none focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400 dark:focus:border-amber-600 transition"
+                  autoComplete="email"
+                  placeholder="correo@restaurante.com"
+                  className="w-full bg-[#FDFAF7] dark:bg-[#160F08] border border-[#E2D9CE] dark:border-[#3A2412] rounded-xl px-4 py-3 text-sm text-[#1C1208] dark:text-[#F0E8D8] placeholder-[#CCC0B4] dark:placeholder-[#4A3A2E] focus:outline-none focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400 dark:focus:border-amber-600 transition"
                 />
+              </div>
+
+              {/* Password */}
+              <div className="space-y-1.5">
+                <label className="block text-[11px] font-bold uppercase tracking-[0.12em] text-[#B8A896] dark:text-[#5A4A38]">
+                  Contraseña
+                </label>
+                <div className="relative">
+                  <input
+                    type={mostrarContrasena ? 'text' : 'password'}
+                    value={contrasena}
+                    onChange={(e) => setContrasena(e.target.value)}
+                    required
+                    autoComplete="current-password"
+                    placeholder="••••••••"
+                    className="w-full bg-[#FDFAF7] dark:bg-[#160F08] border border-[#E2D9CE] dark:border-[#3A2412] rounded-xl px-4 py-3 pr-12 text-sm text-[#1C1208] dark:text-[#F0E8D8] placeholder-[#CCC0B4] dark:placeholder-[#4A3A2E] focus:outline-none focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400 dark:focus:border-amber-600 transition"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setMostrarContrasena((v) => !v)}
+                    tabIndex={-1}
+                    aria-label={mostrarContrasena ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#CCC0B4] dark:text-[#4A3A2E] hover:text-amber-500 dark:hover:text-amber-500 transition-colors"
+                  >
+                    {mostrarContrasena ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Error message */}
+              {error && (
+                <div className="rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/40 px-4 py-3">
+                  <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+                </div>
+              )}
+
+              {/* Submit */}
+              <button
+                type="submit"
+                disabled={cargando}
+                className="w-full mt-1 bg-amber-600 hover:bg-amber-700 active:bg-amber-800 disabled:opacity-60 disabled:cursor-not-allowed text-white rounded-xl py-3 text-sm font-semibold tracking-wide transition-all duration-200 shadow-sm hover:shadow-lg hover:shadow-amber-600/20"
+              >
+                {cargando ? 'Iniciando sesión...' : 'Iniciar sesión'}
+              </button>
+            </form>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-xs text-center text-[#9A8878] dark:text-[#5A4A38] -mt-1 mb-2">
+                Elige con qué sucursal quieres trabajar
+              </p>
+
+              {sucursales.map((s) => (
                 <button
+                  key={s.id ?? 'todas'}
                   type="button"
-                  onClick={() => setMostrarContrasena((v) => !v)}
-                  tabIndex={-1}
-                  aria-label={mostrarContrasena ? 'Ocultar contraseña' : 'Mostrar contraseña'}
-                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#CCC0B4] dark:text-[#4A3A2E] hover:text-amber-500 dark:hover:text-amber-500 transition-colors"
+                  disabled={cargando}
+                  onClick={() => handleElegirSucursal(s.id)}
+                  className="w-full text-left bg-[#FDFAF7] dark:bg-[#160F08] border border-[#E2D9CE] dark:border-[#3A2412] rounded-xl px-4 py-3 text-sm text-[#1C1208] dark:text-[#F0E8D8] hover:border-amber-400 dark:hover:border-amber-600 hover:bg-amber-50/40 dark:hover:bg-amber-900/10 transition disabled:opacity-60"
                 >
-                  {mostrarContrasena ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  {s.nombre}
                 </button>
-              </div>
+              ))}
+
+              {error && (
+                <div className="rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/40 px-4 py-3">
+                  <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={volverACredenciales}
+                className="w-full mt-1 text-sm text-[#9A8878] dark:text-[#5A4A38] hover:text-amber-600 dark:hover:text-amber-500 transition-colors"
+              >
+                ← Volver
+              </button>
             </div>
-
-            {/* Error message */}
-            {error && (
-              <div className="rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/40 px-4 py-3">
-                <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
-              </div>
-            )}
-
-            {/* Submit */}
-            <button
-              type="submit"
-              disabled={cargando}
-              className="w-full mt-1 bg-amber-600 hover:bg-amber-700 active:bg-amber-800 disabled:opacity-60 disabled:cursor-not-allowed text-white rounded-xl py-3 text-sm font-semibold tracking-wide transition-all duration-200 shadow-sm hover:shadow-lg hover:shadow-amber-600/20"
-            >
-              {cargando ? 'Iniciando sesión...' : 'Iniciar sesión'}
-            </button>
-          </form>
+          )}
         </div>
 
         {/* Desarrollado por CodeWave */}
