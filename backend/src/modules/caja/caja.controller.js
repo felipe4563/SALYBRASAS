@@ -2,13 +2,13 @@ const svc = require('./caja.service');
 
 async function obtenerActiva(req, res, next) {
   try {
-    const sesion = await svc.obtenerActiva(req.usuario.id);
+    const sesion = await svc.obtenerActiva(req.usuario.id, req.usuario.sucursal_id);
     res.json({ ok: true, datos: sesion });
   } catch (err) { next(err); }
 }
 
 async function listar(req, res, next) {
-  try { res.json({ ok: true, datos: await svc.listar() }); }
+  try { res.json({ ok: true, datos: await svc.listar({ sucursal_id: req.usuario.sucursal_id, acceso_todas: req.usuario.acceso_todas }) }); }
   catch (err) { next(err); }
 }
 
@@ -20,7 +20,7 @@ async function obtener(req, res, next) {
 async function abrir(req, res, next) {
   try {
     const { monto_apertura } = req.body;
-    res.status(201).json({ ok: true, datos: await svc.abrir(req.usuario.id, monto_apertura) });
+    res.status(201).json({ ok: true, datos: await svc.abrir(req.usuario.id, req.usuario.sucursal_id, monto_apertura) });
   } catch (err) { next(err); }
 }
 

@@ -1,8 +1,8 @@
 const { SesionCaja, DetalleArqueo, Gasto, LibroCaja, Usuario, Pedido, Mesa, sequelize } = require('../../models');
 
-async function obtenerActiva(usuario_id) {
+async function obtenerActiva(usuario_id, sucursal_id) {
   const sesion = await SesionCaja.findOne({
-    where: { usuario_id, estado: 'abierta' },
+    where: { usuario_id, sucursal_id, estado: 'abierta' },
     include: [{ model: Usuario, as: 'usuario', attributes: ['id', 'nombre'] }],
   });
   if (!sesion) return null;
@@ -18,8 +18,10 @@ async function obtenerActiva(usuario_id) {
   return datos;
 }
 
-async function listar() {
+async function listar(alcance = {}) {
+  const where = alcance.acceso_todas ? {} : { sucursal_id: alcance.sucursal_id };
   return SesionCaja.findAll({
+    where,
     include: [{ model: Usuario, as: 'usuario', attributes: ['id', 'nombre'] }],
     order: [['abierto_en', 'DESC']],
     limit: 50,
@@ -38,10 +40,10 @@ async function obtener(id) {
   return s;
 }
 
-async function abrir(usuario_id, monto_apertura = 0) {
-  const activa = await obtenerActiva(usuario_id);
-  if (activa) throw Object.assign(new Error('Ya tienes una sesión de caja abierta'), { status: 409 });
-  return SesionCaja.create({ usuario_id, monto_apertura });
+async function abrir(usuario_id, sucursal_id, monto_apertura = 0) {
+  const activa = await obtenerActiva(usuario_id, sucursal_id);
+  if (activa) throw Object.assign(new Error('Ya tienes una sesión de caja abierta en esta sucursal'), { status: 409 });
+  return SesionCaja.create({ usuario_id, sucursal_id, monto_apertura });
 }
 
 async function registrarGasto(sesion_id, usuario_id, { descripcion, monto }) {
