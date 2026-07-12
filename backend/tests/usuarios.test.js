@@ -16,6 +16,7 @@ describe('PUT /api/v1/usuarios/:id/sucursales', () => {
   let adminToken;
   let usuarioId;
   let sucursalId;
+  let sucursalId2;
 
   beforeAll(async () => {
     const login = await request(app)
@@ -32,11 +33,15 @@ describe('PUT /api/v1/usuarios/:id/sucursales', () => {
 
     const sucursal = await Sucursal.create({ nombre: 'Sucursal Asignacion Test' });
     sucursalId = sucursal.id;
+
+    const sucursal2 = await Sucursal.create({ nombre: 'Sucursal Asignacion Test 2' });
+    sucursalId2 = sucursal2.id;
   });
 
   afterAll(async () => {
     await Usuario.destroy({ where: { id: usuarioId } });
     await Sucursal.destroy({ where: { id: sucursalId } });
+    await Sucursal.destroy({ where: { id: sucursalId2 } });
   });
 
   it('asigna sucursales y refleja el cambio al obtener el usuario', async () => {
@@ -60,5 +65,24 @@ describe('PUT /api/v1/usuarios/:id/sucursales', () => {
     expect(res.status).toBe(200);
     expect(res.body.datos.sucursales).toHaveLength(0);
     expect(res.body.datos.acceso_todas_sucursales).toBe(1);
+  });
+
+  it('reemplaza (no acumula) una asignacion previa de multiples sucursales', async () => {
+    const primero = await request(app)
+      .put(`/api/v1/usuarios/${usuarioId}/sucursales`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ sucursal_ids: [sucursalId, sucursalId2], acceso_todas_sucursales: false });
+
+    expect(primero.status).toBe(200);
+    expect(primero.body.datos.sucursales).toHaveLength(2);
+
+    const res = await request(app)
+      .put(`/api/v1/usuarios/${usuarioId}/sucursales`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ sucursal_ids: [sucursalId2], acceso_todas_sucursales: false });
+
+    expect(res.status).toBe(200);
+    expect(res.body.datos.sucursales).toHaveLength(1);
+    expect(res.body.datos.sucursales[0].id).toBe(sucursalId2);
   });
 });
