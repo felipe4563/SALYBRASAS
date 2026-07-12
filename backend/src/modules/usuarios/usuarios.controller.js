@@ -32,4 +32,12 @@ async function eliminar(req, res, next) {
   } catch (err) { next(err); }
 }
 
-module.exports = { listar, obtener, crear, actualizar, eliminar };
+async function actualizarSucursales(req, res, next) {
+  try {
+    const { sucursal_ids = [], acceso_todas_sucursales = false } = req.body;
+    const datos = await svc.actualizarSucursales(req.params.id, sucursal_ids, acceso_todas_sucursales);
+    res.json({ ok: true, datos });
+  } catch (err) { next(err); }
+}
+
+module.exports = { listar, obtener, crear, actualizar, eliminar, actualizarSucursales };
