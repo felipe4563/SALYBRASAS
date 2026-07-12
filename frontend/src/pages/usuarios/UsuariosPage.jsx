@@ -20,7 +20,7 @@ function BadgeEstado({ activo }) {
 }
 
 /* ─── Modal crear / editar ────────────────────────────────────── */
-function ModalUsuario({ usuario, roles, sucursalesCatalogo, onClose, onGuardar, onGuardarSucursales }) {
+function ModalUsuario({ usuario, roles, sucursalesCatalogo, onClose, onGuardar, onGuardarSucursales, guardandoSucursales }) {
   const esNuevo = !usuario;
   const [form, setForm] = useState(
     usuario
@@ -187,10 +187,11 @@ function ModalUsuario({ usuario, roles, sucursalesCatalogo, onClose, onGuardar, 
 
               <button
                 type="button"
+                disabled={guardandoSucursales}
                 onClick={() => onGuardarSucursales({ sucursal_ids: [...sucursalIds], acceso_todas_sucursales: accesoTodas })}
-                className="w-full py-1.5 text-xs rounded-lg border border-blue-300 dark:border-blue-600 text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/20"
+                className="w-full py-1.5 text-xs rounded-lg border border-blue-300 dark:border-blue-600 text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/20 disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                Guardar sucursales
+                {guardandoSucursales ? 'Guardando...' : 'Guardar sucursales'}
               </button>
             </div>
           )}
@@ -358,7 +359,8 @@ export default function UsuariosPage() {
 
   const errorMutation = mutCrear.error?.response?.data?.mensaje
     || mutEditar.error?.response?.data?.mensaje
-    || mutDesactivar.error?.response?.data?.mensaje;
+    || mutDesactivar.error?.response?.data?.mensaje
+    || mutSucursales.error?.response?.data?.mensaje;
 
   if (!puedoVer) {
     return (
@@ -504,6 +506,7 @@ export default function UsuariosPage() {
           onClose={() => setModal(null)}
           onGuardar={guardarUsuario}
           onGuardarSucursales={modal.usuario ? (datos) => mutSucursales.mutate({ id: modal.usuario.id, datos }) : undefined}
+          guardandoSucursales={mutSucursales.isPending}
         />
       )}
 
