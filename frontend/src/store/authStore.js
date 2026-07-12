@@ -7,8 +7,8 @@ export const useAuthStore = create(
       token: null,
       refreshToken: null,
       usuario: null,
-      setAuth: ({ token, refreshToken, usuario }) =>
-        set({ token, refreshToken, usuario }),
+      setAuth: ({ token, refresh_token, usuario }) =>
+        set({ token, refreshToken: refresh_token, usuario }),
       setToken: (token) => set({ token }),
       updateUsuario: (campos) =>
         set((s) => ({ usuario: s.usuario ? { ...s.usuario, ...campos } : s.usuario })),

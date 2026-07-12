@@ -52,8 +52,9 @@ export default function Topbar({ onToggleSidebar }) {
         >
           <p className="text-sm font-semibold text-gray-800 dark:text-gray-100 group-hover:text-amber-600 dark:group-hover:text-amber-400 leading-tight transition-colors">{usuario?.nombre}</p>
           <p className="text-xs text-gray-400 dark:text-gray-500 leading-tight">
-            {usuario?.rol?.nombre}
-            {usuario?.sucursal_activa && <> · {usuario.sucursal_activa.nombre}</>}
+            {usuario?.rol}
+            {usuario?.rol && usuario?.sucursal_activa && ' · '}
+            {usuario?.sucursal_activa?.nombre}
           </p>
         </Link>
 
