@@ -3,6 +3,7 @@ const sequelize = require('../config/database');
 
 const Pedido = sequelize.define('Pedido', {
   id: { type: DataTypes.INTEGER.UNSIGNED, primaryKey: true, autoIncrement: true },
+  sucursal_id: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false },
   mesa_id: { type: DataTypes.INTEGER.UNSIGNED, allowNull: true },
   usuario_id: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false },
   cliente_id: { type: DataTypes.INTEGER.UNSIGNED },

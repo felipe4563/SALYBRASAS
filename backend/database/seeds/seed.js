@@ -1,6 +1,6 @@
 require('dotenv').config();
 const bcrypt = require('bcryptjs');
-const { sequelize, Rol, Permiso, Usuario, Sucursal } = require('../../src/models');
+const { sequelize, Rol, Permiso, Usuario, Sucursal, Area, SesionCaja, Pedido, Compra, RegistroInventario, Producto, ProductoStockSucursal } = require('../../src/models');
 
 const PERMISOS = [
   { modulo: 'ventas', accion: 'ver', descripcion: 'Ver pedidos' },
@@ -101,6 +101,21 @@ async function seed() {
   for (const u of usuariosExistentes) {
     const yaAsignado = await u.hasSucursal(principal);
     if (!yaAsignado) await u.addSucursal(principal);
+  }
+
+  // Backfill operativo Fase 2 — todo lo existente queda en la Sucursal Principal
+  await sequelize.query('UPDATE areas SET sucursal_id = ? WHERE sucursal_id IS NULL OR sucursal_id = 0', { replacements: [principal.id] });
+  await sequelize.query('UPDATE sesiones_caja SET sucursal_id = ? WHERE sucursal_id IS NULL OR sucursal_id = 0', { replacements: [principal.id] });
+  await sequelize.query('UPDATE pedidos SET sucursal_id = ? WHERE sucursal_id IS NULL OR sucursal_id = 0', { replacements: [principal.id] });
+  await sequelize.query('UPDATE compras SET sucursal_id = ? WHERE sucursal_id IS NULL OR sucursal_id = 0', { replacements: [principal.id] });
+  await sequelize.query('UPDATE registros_inventario SET sucursal_id = ? WHERE sucursal_id IS NULL OR sucursal_id = 0', { replacements: [principal.id] });
+
+  const productosConStock = await Producto.findAll({ where: { stock: { [require('sequelize').Op.ne]: null } } });
+  for (const p of productosConStock) {
+    await ProductoStockSucursal.findOrCreate({
+      where: { producto_id: p.id, sucursal_id: principal.id },
+      defaults: { stock: p.stock },
+    });
   }
 
   // Configuraciones base
