@@ -9,6 +9,7 @@ import ConfiguracionPage from '../pages/configuracion/ConfiguracionPage';
 import ProductosPage from '../pages/productos/ProductosPage';
 import CajaPage from '../pages/caja/CajaPage';
 import RolesPage from '../pages/roles/RolesPage';
+import SucursalesPage from '../pages/sucursales/SucursalesPage';
 import UsuariosPage from '../pages/usuarios/UsuariosPage';
 import LibroCajaPage from '../pages/libro-caja/LibroCajaPage';
 import InventarioPage from '../pages/inventario/InventarioPage';
@@ -34,6 +35,7 @@ export const router = createBrowserRouter(
             { path: '/configuracion',     element: <ConfiguracionPage /> },
             { path: '/caja',             element: <CajaPage /> },
             { path: '/roles',            element: <RolesPage /> },
+            { path: '/sucursales',       element: <SucursalesPage /> },
             { path: '/usuarios',         element: <UsuariosPage /> },
             { path: '/libro-caja',       element: <LibroCajaPage /> },
             { path: '/inventario',       element: <InventarioPage /> },

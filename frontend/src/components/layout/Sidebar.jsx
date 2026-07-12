@@ -5,7 +5,7 @@ import { getConfiguracion, logoSrc } from '../../api/configuracion';
 import {
   LayoutDashboard, UtensilsCrossed, Wallet, BookOpen,
   Package, Boxes, Truck, Users, UserCog, Shield, Settings, X,
-  BarChart2, ChefHat, ChevronLeft,
+  BarChart2, ChefHat, ChevronLeft, Building2,
 } from 'lucide-react';
 
 const NAV_ITEMS = [
@@ -21,6 +21,7 @@ const NAV_ITEMS = [
   { to: '/reportes',     label: 'Reportes',      Icono: BarChart2,       modulo: 'reportes',      accion: 'ver' },
   { to: '/usuarios',     label: 'Usuarios',      Icono: UserCog,         modulo: 'usuarios',      accion: 'ver' },
   { to: '/roles',        label: 'Roles',         Icono: Shield,          modulo: 'roles',         accion: 'ver' },
+  { to: '/sucursales',   label: 'Sucursales',    Icono: Building2,       modulo: 'sucursales',    accion: 'ver' },
   { to: '/configuracion',label: 'Configuración', Icono: Settings,        modulo: 'configuracion', accion: 'ver' },
 ];
 
