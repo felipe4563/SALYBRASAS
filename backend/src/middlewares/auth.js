@@ -11,6 +11,11 @@ async function auth(req, res, next) {
 
   try {
     const payload = jwt.verify(token, process.env.JWT_SECRET);
+
+    if (payload.tipo === 'pre_login') {
+      return res.status(401).json({ ok: false, mensaje: 'Token inválido o expirado' });
+    }
+
     const usuario = await Usuario.findOne({
       where: { id: payload.id, activo: 1 },
       include: [{

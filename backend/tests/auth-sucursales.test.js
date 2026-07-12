@@ -94,6 +94,46 @@ describe('Login con múltiples sucursales', () => {
     expect(yo.body.datos.sucursal_id).toBeNull();
     expect(yo.body.datos.acceso_todas).toBe(true);
   });
+
+  it('rechaza el pre_token como token de acceso en una ruta protegida', async () => {
+    const login = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ email: 'multi-sucursal-test@restaurante.com', contrasena: 'clave123' });
+    const { pre_token } = login.body.datos;
+
+    const res = await request(app)
+      .get('/api/v1/auth/yo')
+      .set('Authorization', `Bearer ${pre_token}`);
+
+    expect(res.status).toBe(401);
+  });
+
+  it('el refresh conserva la sucursal_id elegida en el login de dos pasos', async () => {
+    const login = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ email: 'multi-sucursal-test@restaurante.com', contrasena: 'clave123' });
+    const { pre_token, sucursales } = login.body.datos;
+
+    const elegida = sucursales[0];
+    const conSucursal = await request(app)
+      .post('/api/v1/auth/login/sucursal')
+      .send({ pre_token, sucursal_id: elegida.id });
+
+    const { refresh_token } = conSucursal.body.datos;
+
+    const refreshRes = await request(app)
+      .post('/api/v1/auth/refresh')
+      .send({ refresh_token });
+
+    expect(refreshRes.status).toBe(200);
+    expect(refreshRes.body.datos.token).toBeDefined();
+
+    const yo = await request(app)
+      .get('/api/v1/auth/yo')
+      .set('Authorization', `Bearer ${refreshRes.body.datos.token}`);
+
+    expect(yo.body.datos.sucursal_id).toBe(elegida.id);
+  });
 });
 
 describe('Login con una sola sucursal (compatibilidad)', () => {
