@@ -1,6 +1,6 @@
 require('dotenv').config();
 const bcrypt = require('bcryptjs');
-const { sequelize, Rol, Permiso, Usuario } = require('../../src/models');
+const { sequelize, Rol, Permiso, Usuario, Sucursal } = require('../../src/models');
 
 const PERMISOS = [
   { modulo: 'ventas', accion: 'ver', descripcion: 'Ver pedidos' },
@@ -42,6 +42,10 @@ const PERMISOS = [
   { modulo: 'roles', accion: 'eliminar', descripcion: 'Eliminar roles' },
   { modulo: 'reportes', accion: 'ver', descripcion: 'Ver reportes' },
   { modulo: 'cocina', accion: 'ver', descripcion: 'Ver pantalla de cocina' },
+  { modulo: 'sucursales', accion: 'ver', descripcion: 'Ver sucursales' },
+  { modulo: 'sucursales', accion: 'crear', descripcion: 'Crear sucursales' },
+  { modulo: 'sucursales', accion: 'editar', descripcion: 'Editar sucursales' },
+  { modulo: 'sucursales', accion: 'eliminar', descripcion: 'Eliminar sucursales' },
 ];
 
 async function seed() {
@@ -87,6 +91,17 @@ async function seed() {
     where: { email: 'admin@restaurante.com' },
     defaults: { rol_id: admin.id, nombre: 'Administrador', contrasena: hash },
   });
+
+  // Sucursal por defecto — migra instalaciones existentes a una sola sucursal
+  const [principal] = await Sucursal.findOrCreate({
+    where: { nombre: 'Sucursal Principal' },
+    defaults: { activo: 1 },
+  });
+  const usuariosExistentes = await Usuario.findAll();
+  for (const u of usuariosExistentes) {
+    const yaAsignado = await u.hasSucursal(principal);
+    if (!yaAsignado) await u.addSucursal(principal);
+  }
 
   // Configuraciones base
   const { sequelize: db } = require('../../src/models');

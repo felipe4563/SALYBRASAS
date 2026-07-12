@@ -6,6 +6,11 @@ const RolesPermisos = sequelize.define('roles_permisos', {
   permiso_id: { type: DataTypes.INTEGER.UNSIGNED },
 }, { tableName: 'roles_permisos', timestamps: false });
 
+const UsuariosSucursales = sequelize.define('usuarios_sucursales', {
+  usuario_id: { type: DataTypes.INTEGER.UNSIGNED },
+  sucursal_id: { type: DataTypes.INTEGER.UNSIGNED },
+}, { tableName: 'usuarios_sucursales', timestamps: false });
+
 const Rol = require('./Rol');
 const Permiso = require('./Permiso');
 const Usuario = require('./Usuario');
@@ -26,6 +31,7 @@ const DetalleCompra = require('./DetalleCompra');
 const RegistroInventario = require('./RegistroInventario');
 const Configuracion = require('./Configuracion');
 const Reservacion = require('./Reservacion');
+const Sucursal = require('./Sucursal');
 
 // Roles y Permisos
 Rol.belongsToMany(Permiso, { through: RolesPermisos, foreignKey: 'rol_id', otherKey: 'permiso_id', as: 'permisos' });
@@ -34,6 +40,14 @@ Permiso.belongsToMany(Rol, { through: RolesPermisos, foreignKey: 'permiso_id', o
 // Usuario
 Usuario.belongsTo(Rol, { foreignKey: 'rol_id', as: 'rol' });
 Rol.hasMany(Usuario, { foreignKey: 'rol_id', as: 'usuarios' });
+
+// Sucursales
+// NOTE: 'as' is passed as { singular, plural } instead of a plain string because
+// Sequelize's English inflection library mis-singularizes 'sucursales' as
+// 'sucursale' (not 'sucursal'), which would otherwise produce hasSucursale/
+// addSucursale instead of the hasSucursal/addSucursal mixins this codebase relies on.
+Usuario.belongsToMany(Sucursal, { through: UsuariosSucursales, foreignKey: 'usuario_id', otherKey: 'sucursal_id', as: { singular: 'sucursal', plural: 'sucursales' } });
+Sucursal.belongsToMany(Usuario, { through: UsuariosSucursales, foreignKey: 'sucursal_id', otherKey: 'usuario_id', as: 'usuarios' });
 
 // Mesas
 Mesa.belongsTo(Area, { foreignKey: 'area_id', as: 'area' });
@@ -97,4 +111,5 @@ module.exports = {
   RegistroInventario,
   Configuracion,
   Reservacion,
+  Sucursal,
 };
