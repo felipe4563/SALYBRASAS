@@ -2,12 +2,16 @@ const { Area, Mesa } = require('../../models');
 
 // --- Áreas ---
 
-async function listarAreas() {
-  return Area.findAll({ include: [{ model: Mesa, as: 'mesas' }], order: [['nombre', 'ASC']] });
+function _filtroSucursal({ sucursal_id, acceso_todas }) {
+  return acceso_todas ? {} : { sucursal_id };
 }
 
-async function crearArea({ nombre }) {
-  return Area.create({ nombre });
+async function listarAreas(alcance) {
+  return Area.findAll({ where: _filtroSucursal(alcance), include: [{ model: Mesa, as: 'mesas' }], order: [['nombre', 'ASC']] });
+}
+
+async function crearArea({ nombre }, sucursal_id) {
+  return Area.create({ nombre, sucursal_id });
 }
 
 async function actualizarArea(id, { nombre }) {
@@ -27,20 +31,27 @@ async function eliminarArea(id) {
 
 // --- Mesas ---
 
-async function listarMesas(area_id) {
+async function listarMesas(area_id, alcance) {
   const where = area_id ? { area_id } : {};
-  return Mesa.findAll({ where, include: [{ model: Area, as: 'area', attributes: ['id', 'nombre'] }], order: [['nombre', 'ASC']] });
+  return Mesa.findAll({
+    where,
+    include: [{ model: Area, as: 'area', attributes: ['id', 'nombre', 'sucursal_id'], where: _filtroSucursal(alcance) }],
+    order: [['nombre', 'ASC']],
+  });
 }
 
 async function obtenerMesa(id) {
-  const mesa = await Mesa.findByPk(id, { include: [{ model: Area, as: 'area', attributes: ['id', 'nombre'] }] });
+  const mesa = await Mesa.findByPk(id, { include: [{ model: Area, as: 'area', attributes: ['id', 'nombre', 'sucursal_id'] }] });
   if (!mesa) throw Object.assign(new Error('Mesa no encontrada'), { status: 404 });
   return mesa;
 }
 
-async function crearMesa({ area_id, nombre, asientos = 4, pos_x = 0, pos_y = 0 }) {
+async function crearMesa({ area_id, nombre, asientos = 4, pos_x = 0, pos_y = 0 }, sucursal_id) {
   const area = await Area.findByPk(area_id);
   if (!area) throw Object.assign(new Error('Área no encontrada'), { status: 404 });
+  if (area.sucursal_id !== sucursal_id) {
+    throw Object.assign(new Error('El área no pertenece a tu sucursal'), { status: 404 });
+  }
   return Mesa.create({ area_id, nombre, asientos, pos_x, pos_y });
 }
 

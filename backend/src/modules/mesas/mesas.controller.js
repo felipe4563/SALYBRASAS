@@ -1,14 +1,18 @@
 const svc = require('./mesas.service');
 
+function _alcance(req) {
+  return { sucursal_id: req.usuario.sucursal_id, acceso_todas: req.usuario.acceso_todas };
+}
+
 async function listarAreas(req, res, next) {
-  try { res.json({ ok: true, datos: await svc.listarAreas() }); }
+  try { res.json({ ok: true, datos: await svc.listarAreas(_alcance(req)) }); }
   catch (err) { next(err); }
 }
 
 async function crearArea(req, res, next) {
   try {
     if (!req.body.nombre) return res.status(400).json({ ok: false, mensaje: 'nombre es requerido' });
-    res.status(201).json({ ok: true, datos: await svc.crearArea(req.body) });
+    res.status(201).json({ ok: true, datos: await svc.crearArea(req.body, req.usuario.sucursal_id) });
   } catch (err) { next(err); }
 }
 
@@ -23,7 +27,7 @@ async function eliminarArea(req, res, next) {
 }
 
 async function listarMesas(req, res, next) {
-  try { res.json({ ok: true, datos: await svc.listarMesas(req.query.area_id) }); }
+  try { res.json({ ok: true, datos: await svc.listarMesas(req.query.area_id, _alcance(req)) }); }
   catch (err) { next(err); }
 }
 
@@ -36,7 +40,7 @@ async function crearMesa(req, res, next) {
   try {
     const { area_id, nombre } = req.body;
     if (!area_id || !nombre) return res.status(400).json({ ok: false, mensaje: 'area_id y nombre son requeridos' });
-    res.status(201).json({ ok: true, datos: await svc.crearMesa(req.body) });
+    res.status(201).json({ ok: true, datos: await svc.crearMesa(req.body, req.usuario.sucursal_id) });
   } catch (err) { next(err); }
 }
 
