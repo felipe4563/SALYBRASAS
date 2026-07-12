@@ -148,6 +148,6 @@ test added, zero regressions.
 ### Commit
 
 ```
-9263c1899a5b74167c67aa5386eb8ceef434d16a
+e5bd0825fc2de5d763b2a673abdf92004f57d3a0
 test(usuarios): cover replace-not-additive semantics for PUT /:id/sucursales
 ```
