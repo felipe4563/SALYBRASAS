@@ -1,7 +1,7 @@
 const svc = require('./ventas.service');
 
 async function listar(req, res, next) {
-  try { res.json({ ok: true, datos: await svc.listar(req.query) }); }
+  try { res.json({ ok: true, datos: await svc.listar({ ...req.query, sucursal_id: req.usuario.sucursal_id, acceso_todas: req.usuario.acceso_todas }) }); }
   catch (err) { next(err); }
 }
 
@@ -62,7 +62,7 @@ async function cancelar(req, res, next) {
 }
 
 async function listarCocina(req, res, next) {
-  try { res.json({ ok: true, datos: await svc.listarCocina() }); }
+  try { res.json({ ok: true, datos: await svc.listarCocina({ sucursal_id: req.usuario.sucursal_id, acceso_todas: req.usuario.acceso_todas }) }); }
   catch (err) { next(err); }
 }
 
