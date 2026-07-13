@@ -47,7 +47,7 @@ async function crearProducto(req, res, next) {
 }
 
 async function actualizarProducto(req, res, next) {
-  try { res.json({ ok: true, datos: await svc.actualizarProducto(req.params.id, req.body) }); }
+  try { res.json({ ok: true, datos: await svc.actualizarProducto(req.params.id, req.body, _alcance(req)) }); }
   catch (err) { next(err); }
 }
 

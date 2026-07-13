@@ -437,10 +437,14 @@ function FormProductoModal({ prod, categorias, onClose, onGuardar, guardando, er
       categoria_id: parseInt(form.categoria_id),
       nombre: form.nombre,
       precio: parseFloat(form.precio),
-      stock:  form.stock !== '' ? parseInt(form.stock) : null,
       es_vendible: form.es_vendible,
       imagen: form.imagen,
     };
+    // El stock solo se define al crear el producto; en edición se maneja
+    // exclusivamente vía ajustes de inventario (ajustarStockSucursal).
+    if (!prod) {
+      datos.stock = form.stock !== '' ? parseInt(form.stock) : null;
+    }
     onGuardar(datos);
   }
 
@@ -528,16 +532,18 @@ function FormProductoModal({ prod, categorias, onClose, onGuardar, guardando, er
               className="w-full bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl px-4 py-2.5 text-sm text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
             />
           </div>
-          <div>
-            <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">Stock inicial</label>
-            <input
-              type="number" min="0"
-              value={form.stock}
-              onChange={e => set('stock', e.target.value)}
-              placeholder="Opcional"
-              className="w-full bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl px-4 py-2.5 text-sm text-gray-800 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
-            />
-          </div>
+          {!prod && (
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">Stock inicial</label>
+              <input
+                type="number" min="0"
+                value={form.stock}
+                onChange={e => set('stock', e.target.value)}
+                placeholder="Opcional"
+                className="w-full bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl px-4 py-2.5 text-sm text-gray-800 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
+              />
+            </div>
+          )}
         </div>
 
         <label className="flex items-center gap-3 cursor-pointer">

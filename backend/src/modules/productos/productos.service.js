@@ -69,11 +69,12 @@ async function crearProducto({ categoria_id, nombre, codigo_barras, codigo, prec
   return obtenerProducto(producto.id, alcance);
 }
 
-async function actualizarProducto(id, datos) {
+async function actualizarProducto(id, datos, alcance) {
+  const { stock, ...resto } = datos; // stock nunca se edita aquí — solo vía ajustarStockSucursal
   const p = await Producto.findByPk(id);
   if (!p) throw Object.assign(new Error('Producto no encontrado'), { status: 404 });
-  await p.update(datos);
-  return obtenerProducto(id);
+  await p.update(resto);
+  return obtenerProducto(id, alcance);
 }
 
 async function eliminarProducto(id) {
