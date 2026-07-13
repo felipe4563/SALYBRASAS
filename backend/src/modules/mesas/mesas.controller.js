@@ -17,12 +17,12 @@ async function crearArea(req, res, next) {
 }
 
 async function actualizarArea(req, res, next) {
-  try { res.json({ ok: true, datos: await svc.actualizarArea(req.params.id, req.body) }); }
+  try { res.json({ ok: true, datos: await svc.actualizarArea(req.params.id, req.body, _alcance(req)) }); }
   catch (err) { next(err); }
 }
 
 async function eliminarArea(req, res, next) {
-  try { await svc.eliminarArea(req.params.id); res.json({ ok: true, datos: null }); }
+  try { await svc.eliminarArea(req.params.id, _alcance(req)); res.json({ ok: true, datos: null }); }
   catch (err) { next(err); }
 }
 
@@ -32,7 +32,7 @@ async function listarMesas(req, res, next) {
 }
 
 async function obtenerMesa(req, res, next) {
-  try { res.json({ ok: true, datos: await svc.obtenerMesa(req.params.id) }); }
+  try { res.json({ ok: true, datos: await svc.obtenerMesa(req.params.id, _alcance(req)) }); }
   catch (err) { next(err); }
 }
 
@@ -45,7 +45,7 @@ async function crearMesa(req, res, next) {
 }
 
 async function actualizarMesa(req, res, next) {
-  try { res.json({ ok: true, datos: await svc.actualizarMesa(req.params.id, req.body) }); }
+  try { res.json({ ok: true, datos: await svc.actualizarMesa(req.params.id, req.body, _alcance(req)) }); }
   catch (err) { next(err); }
 }
 
@@ -53,12 +53,12 @@ async function actualizarPosicion(req, res, next) {
   try {
     const { pos_x, pos_y } = req.body;
     if (pos_x === undefined || pos_y === undefined) return res.status(400).json({ ok: false, mensaje: 'pos_x y pos_y son requeridos' });
-    res.json({ ok: true, datos: await svc.actualizarPosicion(req.params.id, { pos_x, pos_y }) });
+    res.json({ ok: true, datos: await svc.actualizarPosicion(req.params.id, { pos_x, pos_y }, _alcance(req)) });
   } catch (err) { next(err); }
 }
 
 async function eliminarMesa(req, res, next) {
-  try { await svc.eliminarMesa(req.params.id); res.json({ ok: true, datos: null }); }
+  try { await svc.eliminarMesa(req.params.id, _alcance(req)); res.json({ ok: true, datos: null }); }
   catch (err) { next(err); }
 }
 
