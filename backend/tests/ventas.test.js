@@ -81,3 +81,71 @@ describe('Ventas por sucursal', () => {
     expect(fila.stock).toBe(1); // 3 - 2
   });
 });
+
+describe('Ventas - aislamiento entre sucursales (acceso por id)', () => {
+  let sucursalA, sucursalC, usuarioAId, usuarioCId, tokenA, tokenC, sesionCajaAId, mesaAId, pedidoAId;
+
+  beforeAll(async () => {
+    sucursalA = await Sucursal.create({ nombre: 'Sucursal Aislamiento A' });
+    sucursalC = await Sucursal.create({ nombre: 'Sucursal Aislamiento C' });
+    const area = await Area.create({ nombre: 'Area Aislamiento A', sucursal_id: sucursalA.id });
+    const mesa = await Mesa.create({ area_id: area.id, nombre: 'Mesa Aislamiento A' });
+    mesaAId = mesa.id;
+
+    const rol = await Rol.findOne({ where: { nombre: 'Cajero' } });
+    const hash = await bcrypt.hash('clave123', 10);
+
+    const usuarioA = await Usuario.create({ rol_id: rol.id, nombre: 'Aislamiento A', email: 'aislamiento-a-test@restaurante.com', contrasena: hash });
+    await usuarioA.addSucursal(sucursalA);
+    usuarioAId = usuarioA.id;
+
+    const usuarioC = await Usuario.create({ rol_id: rol.id, nombre: 'Aislamiento C', email: 'aislamiento-c-test@restaurante.com', contrasena: hash });
+    await usuarioC.addSucursal(sucursalC);
+    usuarioCId = usuarioC.id;
+
+    const loginA = await request(app).post('/api/v1/auth/login').send({ email: 'aislamiento-a-test@restaurante.com', contrasena: 'clave123' });
+    tokenA = loginA.body.datos.token;
+    const loginC = await request(app).post('/api/v1/auth/login').send({ email: 'aislamiento-c-test@restaurante.com', contrasena: 'clave123' });
+    tokenC = loginC.body.datos.token;
+
+    const sesion = await SesionCaja.create({ usuario_id: usuarioAId, sucursal_id: sucursalA.id, monto_apertura: 0 });
+    sesionCajaAId = sesion.id;
+
+    const crear = await request(app)
+      .post('/api/v1/ventas')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ mesa_id: mesaAId, tipo: 'mesa', sesion_caja_id: sesionCajaAId });
+    pedidoAId = crear.body.datos.id;
+  });
+
+  afterAll(async () => {
+    await Pedido.destroy({ where: { usuario_id: usuarioAId } });
+    await SesionCaja.destroy({ where: { id: sesionCajaAId } });
+    await Usuario.destroy({ where: { id: [usuarioAId, usuarioCId] } });
+    await Mesa.destroy({ where: { id: mesaAId } });
+    await Area.destroy({ where: { sucursal_id: sucursalA.id } });
+    await Sucursal.destroy({ where: { id: [sucursalA.id, sucursalC.id] } });
+  });
+
+  it('un usuario de otra sucursal NO puede leer un pedido por id (404)', async () => {
+    const res = await request(app)
+      .get(`/api/v1/ventas/${pedidoAId}`)
+      .set('Authorization', `Bearer ${tokenC}`);
+    expect(res.status).toBe(404);
+  });
+
+  it('un usuario de otra sucursal NO puede cobrar un pedido de otra sucursal (404)', async () => {
+    const res = await request(app)
+      .post(`/api/v1/ventas/${pedidoAId}/cobrar`)
+      .set('Authorization', `Bearer ${tokenC}`)
+      .send({ metodo_pago: 'efectivo', monto_recibido: 100 });
+    expect(res.status).toBe(404);
+  });
+
+  it('un usuario de otra sucursal NO puede cancelar un pedido de otra sucursal (404)', async () => {
+    const res = await request(app)
+      .post(`/api/v1/ventas/${pedidoAId}/cancelar`)
+      .set('Authorization', `Bearer ${tokenC}`);
+    expect(res.status).toBe(404);
+  });
+});

@@ -32,9 +32,16 @@ async function listarCocina({ sucursal_id, acceso_todas } = {}) {
   });
 }
 
-async function obtener(id) {
+function _verificarAlcance(pedido, alcance) {
+  if (alcance && !alcance.acceso_todas && pedido.sucursal_id !== alcance.sucursal_id) {
+    throw Object.assign(new Error('Pedido no encontrado'), { status: 404 });
+  }
+}
+
+async function obtener(id, alcance) {
   const p = await Pedido.findByPk(id, { include: INCLUDE_PEDIDO_COMPLETO });
   if (!p) throw Object.assign(new Error('Pedido no encontrado'), { status: 404 });
+  _verificarAlcance(p, alcance);
   return p;
 }
 
@@ -187,9 +194,10 @@ async function crearCompleta({ tipo, mesa_id, nombre_cliente, documento_cliente,
   return creado;
 }
 
-async function agregarItem(pedido_id, { producto_id, cantidad = 1, nota }) {
+async function agregarItem(pedido_id, { producto_id, cantidad = 1, nota }, alcance) {
   const pedido = await Pedido.findByPk(pedido_id);
   if (!pedido) throw Object.assign(new Error('Pedido no encontrado'), { status: 404 });
+  _verificarAlcance(pedido, alcance);
   if (pedido.estado !== 'pendiente') throw Object.assign(new Error('El pedido no está pendiente'), { status: 409 });
 
   const producto = await Producto.findByPk(producto_id);
@@ -209,7 +217,10 @@ async function agregarItem(pedido_id, { producto_id, cantidad = 1, nota }) {
   return item;
 }
 
-async function actualizarItem(pedido_id, item_id, { cantidad, nota, estado }) {
+async function actualizarItem(pedido_id, item_id, { cantidad, nota, estado }, alcance) {
+  const pedido = await Pedido.findByPk(pedido_id);
+  if (!pedido) throw Object.assign(new Error('Pedido no encontrado'), { status: 404 });
+  _verificarAlcance(pedido, alcance);
   const item = await DetallePedido.findOne({ where: { id: item_id, pedido_id } });
   if (!item) throw Object.assign(new Error('Item no encontrado'), { status: 404 });
   await item.update({ cantidad, nota, estado });
@@ -218,9 +229,11 @@ async function actualizarItem(pedido_id, item_id, { cantidad, nota, estado }) {
   return item;
 }
 
-async function eliminarItem(pedido_id, item_id) {
+async function eliminarItem(pedido_id, item_id, alcance) {
   const pedido = await Pedido.findByPk(pedido_id);
-  if (!pedido || pedido.estado !== 'pendiente') throw Object.assign(new Error('Pedido no modificable'), { status: 409 });
+  if (!pedido) throw Object.assign(new Error('Pedido no encontrado'), { status: 404 });
+  _verificarAlcance(pedido, alcance);
+  if (pedido.estado !== 'pendiente') throw Object.assign(new Error('Pedido no modificable'), { status: 409 });
   const item = await DetallePedido.findOne({ where: { id: item_id, pedido_id } });
   if (!item) throw Object.assign(new Error('Item no encontrado'), { status: 404 });
   await item.destroy();
@@ -228,9 +241,10 @@ async function eliminarItem(pedido_id, item_id) {
   emitir('restaurante:actualizar', { tipo: 'pedido_items' });
 }
 
-async function cobrar(pedido_id, usuario_id, { metodo_pago, monto_recibido, descuento = 0, propina = 0 }) {
+async function cobrar(pedido_id, usuario_id, { metodo_pago, monto_recibido, descuento = 0, propina = 0 }, alcance) {
   const pedido = await Pedido.findByPk(pedido_id, { include: INCLUDE_PEDIDO_COMPLETO });
   if (!pedido) throw Object.assign(new Error('Pedido no encontrado'), { status: 404 });
+  _verificarAlcance(pedido, alcance);
   if (!['pendiente', 'listo'].includes(pedido.estado)) throw Object.assign(new Error('El pedido no puede cobrarse'), { status: 409 });
   if (!pedido.sesion_caja_id) throw Object.assign(new Error('No hay sesión de caja activa en este pedido'), { status: 409 });
 
@@ -295,9 +309,10 @@ async function cobrar(pedido_id, usuario_id, { metodo_pago, monto_recibido, desc
   return cobrado;
 }
 
-async function cancelar(pedido_id, usuario_id) {
+async function cancelar(pedido_id, usuario_id, alcance) {
   const pedido = await Pedido.findByPk(pedido_id);
   if (!pedido) throw Object.assign(new Error('Pedido no encontrado'), { status: 404 });
+  _verificarAlcance(pedido, alcance);
   if (pedido.estado !== 'pendiente') throw Object.assign(new Error('Solo se pueden cancelar pedidos pendientes'), { status: 409 });
 
   await pedido.update({ estado: 'cancelado' });
@@ -322,9 +337,10 @@ async function _recalcularTotal(pedido_id) {
   await Pedido.update({ total: result.total }, { where: { id: pedido_id } });
 }
 
-async function marcarListo(pedido_id) {
+async function marcarListo(pedido_id, alcance) {
   const pedido = await Pedido.findByPk(pedido_id);
   if (!pedido) throw Object.assign(new Error('Pedido no encontrado'), { status: 404 });
+  _verificarAlcance(pedido, alcance);
   if (pedido.estado !== 'pendiente') throw Object.assign(new Error('Solo pedidos pendientes pueden marcarse como listos'), { status: 409 });
   await pedido.update({ estado: 'listo' });
   const listo = await obtener(pedido_id);
