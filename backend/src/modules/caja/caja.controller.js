@@ -1,12 +1,25 @@
 const svc = require('./caja.service');
+const { Sucursal } = require('../../models');
 
 function _alcance(req) {
   return { sucursal_id: req.usuario.sucursal_id, acceso_todas: req.usuario.acceso_todas };
 }
 
+async function _resolverSucursal(req) {
+  if (!req.usuario.acceso_todas) return req.usuario.sucursal_id;
+  const sucursal_id = req.body.sucursal_id || req.query.sucursal_id;
+  if (!sucursal_id) {
+    throw Object.assign(new Error('sucursal_id es requerido'), { status: 400 });
+  }
+  const existe = await Sucursal.findByPk(sucursal_id);
+  if (!existe) throw Object.assign(new Error('Sucursal no encontrada'), { status: 404 });
+  return sucursal_id;
+}
+
 async function obtenerActiva(req, res, next) {
   try {
-    const sesion = await svc.obtenerActiva(req.usuario.id, req.usuario.sucursal_id);
+    const sucursal_id = await _resolverSucursal(req);
+    const sesion = await svc.obtenerActiva(req.usuario.id, sucursal_id);
     res.json({ ok: true, datos: sesion });
   } catch (err) { next(err); }
 }
@@ -24,7 +37,8 @@ async function obtener(req, res, next) {
 async function abrir(req, res, next) {
   try {
     const { monto_apertura } = req.body;
-    res.status(201).json({ ok: true, datos: await svc.abrir(req.usuario.id, req.usuario.sucursal_id, monto_apertura) });
+    const sucursal_id = await _resolverSucursal(req);
+    res.status(201).json({ ok: true, datos: await svc.abrir(req.usuario.id, sucursal_id, monto_apertura) });
   } catch (err) { next(err); }
 }
 

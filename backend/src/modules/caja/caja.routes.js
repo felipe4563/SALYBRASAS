@@ -2,14 +2,13 @@ const { Router } = require('express');
 const ctrl = require('./caja.controller');
 const auth = require('../../middlewares/auth');
 const { verificarPermiso } = require('../../middlewares/permisos');
-const { requiereSucursalActiva } = require('../../middlewares/sucursalActiva');
 
 const router = Router();
 router.use(auth);
 
 router.get('/activa', verificarPermiso('caja', 'ver'), ctrl.obtenerActiva);
 router.get('/', verificarPermiso('caja', 'ver'), ctrl.listar);
-router.post('/abrir', verificarPermiso('caja', 'abrir'), requiereSucursalActiva, ctrl.abrir);
+router.post('/abrir', verificarPermiso('caja', 'abrir'), ctrl.abrir);
 router.get('/:id', verificarPermiso('caja', 'ver'), ctrl.obtener);
 router.get('/:id/gastos', verificarPermiso('caja', 'ver'), ctrl.listarGastos);
 router.post('/:id/gastos', verificarPermiso('caja', 'ver'), ctrl.registrarGasto);
