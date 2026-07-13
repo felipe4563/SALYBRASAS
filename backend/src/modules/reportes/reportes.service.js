@@ -12,9 +12,11 @@ function filtroFecha(desde, hasta) {
   return { creado_en: range };
 }
 
-async function ventas({ desde, hasta } = {}) {
+async function ventas({ desde, hasta, sucursal_id, acceso_todas } = {}) {
+  const where = { estado: 'completado', ...filtroFecha(desde, hasta) };
+  if (!acceso_todas) where.sucursal_id = sucursal_id;
   return Pedido.findAll({
-    where: { estado: 'completado', ...filtroFecha(desde, hasta) },
+    where,
     include: [
       { model: Mesa,    as: 'mesa',    attributes: ['id', 'nombre'] },
       { model: Cliente, as: 'cliente', attributes: ['id', 'nombre'] },
@@ -28,9 +30,11 @@ async function ventas({ desde, hasta } = {}) {
   });
 }
 
-async function inventario({ desde, hasta } = {}) {
+async function inventario({ desde, hasta, sucursal_id, acceso_todas } = {}) {
+  const where = filtroFecha(desde, hasta);
+  if (!acceso_todas) where.sucursal_id = sucursal_id;
   return RegistroInventario.findAll({
-    where: filtroFecha(desde, hasta),
+    where,
     include: [
       { model: Producto, as: 'producto', attributes: ['id', 'nombre', 'stock'] },
       { model: Usuario,  as: 'usuario',  attributes: ['id', 'nombre'] },
