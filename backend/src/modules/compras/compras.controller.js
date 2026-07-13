@@ -23,7 +23,7 @@ async function desactivarProveedor(req, res, next) {
 }
 
 async function listarCompras(req, res, next) {
-  try { res.json({ ok: true, datos: await svc.listarCompras() }); }
+  try { res.json({ ok: true, datos: await svc.listarCompras({ sucursal_id: req.usuario.sucursal_id, acceso_todas: req.usuario.acceso_todas }) }); }
   catch (err) { next(err); }
 }
 
@@ -38,7 +38,7 @@ async function crearCompra(req, res, next) {
     if (!proveedor_id || !items || !items.length) {
       return res.status(400).json({ ok: false, mensaje: 'proveedor_id e items son requeridos' });
     }
-    res.status(201).json({ ok: true, datos: await svc.crearCompra(req.usuario.id, req.body) });
+    res.status(201).json({ ok: true, datos: await svc.crearCompra(req.usuario.id, req.usuario.sucursal_id, req.body) });
   } catch (err) { next(err); }
 }
 

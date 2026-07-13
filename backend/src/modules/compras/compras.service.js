@@ -1,4 +1,5 @@
-const { Proveedor, Compra, DetalleCompra, Producto, RegistroInventario, sequelize } = require('../../models');
+const { Proveedor, Compra, DetalleCompra, Producto, sequelize } = require('../../models');
+const { ajustarStockSucursal } = require('../inventario/stock.service');
 
 const INCLUDE_COMPRA = [
   { model: Proveedor, as: 'proveedor', attributes: ['id', 'nombre'] },
@@ -33,8 +34,9 @@ async function desactivarProveedor(id) {
 
 // --- Compras ---
 
-async function listarCompras() {
-  return Compra.findAll({ include: INCLUDE_COMPRA, order: [['creado_en', 'DESC']] });
+async function listarCompras(alcance = {}) {
+  const where = alcance.acceso_todas ? {} : { sucursal_id: alcance.sucursal_id };
+  return Compra.findAll({ where, include: INCLUDE_COMPRA, order: [['creado_en', 'DESC']] });
 }
 
 async function obtenerCompra(id) {
@@ -43,13 +45,13 @@ async function obtenerCompra(id) {
   return c;
 }
 
-async function crearCompra(usuario_id, { proveedor_id, notas, items = [] }) {
+async function crearCompra(usuario_id, sucursal_id, { proveedor_id, notas, items = [] }) {
   const proveedor = await Proveedor.findByPk(proveedor_id);
   if (!proveedor) throw Object.assign(new Error('Proveedor no encontrado'), { status: 404 });
 
   const total = items.reduce((sum, i) => sum + (parseFloat(i.costo_unitario) * parseInt(i.cantidad)), 0);
 
-  const compra = await Compra.create({ proveedor_id, usuario_id, total, notas });
+  const compra = await Compra.create({ proveedor_id, usuario_id, sucursal_id, total, notas });
 
   await DetalleCompra.bulkCreate(
     items.map(i => ({
@@ -79,18 +81,10 @@ async function recibirCompra(id, usuario_id) {
 
   await sequelize.transaction(async (t) => {
     for (const detalle of compra.detalles) {
-      const producto = await Producto.findByPk(detalle.producto_id, { transaction: t });
-      const stock_anterior = producto ? producto.stock : 0;
-      await Producto.increment('stock', { by: detalle.cantidad, where: { id: detalle.producto_id }, transaction: t });
-      await RegistroInventario.create({
-        producto_id: detalle.producto_id,
-        usuario_id,
-        tipo: 'compra',
-        cantidad: detalle.cantidad,
-        stock_anterior,
-        stock_nuevo: stock_anterior + detalle.cantidad,
-        nota: `Compra #${compra.id}`,
-      }, { transaction: t });
+      await ajustarStockSucursal({
+        producto_id: detalle.producto_id, sucursal_id: compra.sucursal_id, tipo: 'compra', cantidad: detalle.cantidad,
+        usuario_id, nota: `Compra #${compra.id}`, transaction: t,
+      });
     }
     await compra.update({ estado: 'recibido' }, { transaction: t });
   });
