@@ -59,11 +59,15 @@ async function obtenerProducto(id, alcance) {
   return conStock;
 }
 
-async function crearProducto({ categoria_id, nombre, codigo_barras, codigo, precio, costo, stock, es_vendible, imagen }, alcance) {
+async function crearProducto({ categoria_id, nombre, codigo_barras, codigo, precio, costo, stock, sucursal_id, es_vendible, imagen }, alcance) {
   const producto = await Producto.create({ categoria_id, nombre, codigo_barras, codigo, precio, costo, stock: stock !== undefined ? 0 : null, es_vendible, imagen });
 
-  if (stock !== undefined && stock !== null && !alcance.acceso_todas) {
-    await ajustarStockSucursal({ producto_id: producto.id, sucursal_id: alcance.sucursal_id, tipo: 'ajuste', cantidad: stock, usuario_id: alcance.usuario_id, nota: 'Stock inicial' });
+  if (stock !== undefined && stock !== null) {
+    const sucursalDestino = alcance.acceso_todas ? sucursal_id : alcance.sucursal_id;
+    if (alcance.acceso_todas && !sucursalDestino) {
+      throw Object.assign(new Error('sucursal_id es requerido para asignar stock inicial'), { status: 400 });
+    }
+    await ajustarStockSucursal({ producto_id: producto.id, sucursal_id: sucursalDestino, tipo: 'ajuste', cantidad: stock, usuario_id: alcance.usuario_id, nota: 'Stock inicial' });
   }
 
   return obtenerProducto(producto.id, alcance);

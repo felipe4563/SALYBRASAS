@@ -13,7 +13,8 @@ describe('Productos API', () => {
   });
 });
 
-const { Sucursal, ProductoStockSucursal } = require('../src/models');
+const bcrypt = require('bcryptjs');
+const { Sucursal, ProductoStockSucursal, Categoria, Usuario, Rol, Producto } = require('../src/models');
 
 describe('Stock de productos por sucursal', () => {
   let adminToken, categoriaId, sucursalPrincipalId;
@@ -67,5 +68,60 @@ describe('Stock de productos por sucursal', () => {
       .send({ nombre: 'Producto Editado Test' });
 
     expect(res.status).toBe(200);
+  });
+});
+
+describe('Productos — stock inicial con acceso a todas las sucursales', () => {
+  let categoriaId, sucursalX, usuarioTodasId, tokenTodas;
+
+  beforeAll(async () => {
+    const categoria = await Categoria.create({ nombre: 'Categoria Stock Inicial Todas Test' });
+    categoriaId = categoria.id;
+    sucursalX = await Sucursal.create({ nombre: 'Sucursal Stock Inicial Todas X' });
+
+    const rolAdmin = await Rol.findOne({ where: { nombre: 'Administrador' } });
+    const hash = await bcrypt.hash('clave123', 10);
+    const todas = await Usuario.create({
+      rol_id: rolAdmin.id, nombre: 'Productos Acceso Todas Test', email: 'productos-todas-test@restaurante.com',
+      contrasena: hash, acceso_todas_sucursales: 1,
+    });
+    usuarioTodasId = todas.id;
+    const login = await request(app).post('/api/v1/auth/login').send({ email: 'productos-todas-test@restaurante.com', contrasena: 'clave123' });
+    const elegido = await request(app).post('/api/v1/auth/login/sucursal').send({ pre_token: login.body.datos.pre_token, sucursal_id: null });
+    tokenTodas = elegido.body.datos.token;
+  });
+
+  afterAll(async () => {
+    await Producto.destroy({ where: { categoria_id: categoriaId } });
+    await Categoria.destroy({ where: { id: categoriaId } });
+    await Usuario.destroy({ where: { id: usuarioTodasId } });
+    await Sucursal.destroy({ where: { id: sucursalX.id } });
+  });
+
+  it('acceso-todas creando producto con stock y sin sucursal_id → 400', async () => {
+    const res = await request(app)
+      .post('/api/v1/productos')
+      .set('Authorization', `Bearer ${tokenTodas}`)
+      .send({ categoria_id: categoriaId, nombre: 'Producto Sin Sucursal Test', precio: 10, stock: 20 });
+    expect(res.status).toBe(400);
+  });
+
+  it('acceso-todas creando producto con stock y sucursal_id válido → asigna el stock ahí', async () => {
+    const res = await request(app)
+      .post('/api/v1/productos')
+      .set('Authorization', `Bearer ${tokenTodas}`)
+      .send({ categoria_id: categoriaId, nombre: 'Producto Con Sucursal Test', precio: 10, stock: 20, sucursal_id: sucursalX.id });
+    expect(res.status).toBe(201);
+
+    const stock = await ProductoStockSucursal.findOne({ where: { producto_id: res.body.datos.id, sucursal_id: sucursalX.id } });
+    expect(stock.stock).toBe(20);
+  });
+
+  it('acceso-todas creando producto sin stock no requiere sucursal_id', async () => {
+    const res = await request(app)
+      .post('/api/v1/productos')
+      .set('Authorization', `Bearer ${tokenTodas}`)
+      .send({ categoria_id: categoriaId, nombre: 'Producto Sin Stock Inicial Test', precio: 10 });
+    expect(res.status).toBe(201);
   });
 });
