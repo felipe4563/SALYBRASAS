@@ -124,4 +124,16 @@ describe('Productos — stock inicial con acceso a todas las sucursales', () => 
       .send({ categoria_id: categoriaId, nombre: 'Producto Sin Stock Inicial Test', precio: 10 });
     expect(res.status).toBe(201);
   });
+
+  it('acceso-todas creando producto con stock y sucursal_id inexistente → 404 y no crea el producto', async () => {
+    const antes = await Producto.count({ where: { categoria_id: categoriaId } });
+    const res = await request(app)
+      .post('/api/v1/productos')
+      .set('Authorization', `Bearer ${tokenTodas}`)
+      .send({ categoria_id: categoriaId, nombre: 'Producto Sucursal Inexistente Test', precio: 10, stock: 20, sucursal_id: 999999 });
+    expect(res.status).toBe(404);
+
+    const despues = await Producto.count({ where: { categoria_id: categoriaId } });
+    expect(despues).toBe(antes); // no quedó huérfano
+  });
 });

@@ -1,4 +1,4 @@
-const { Categoria, Producto } = require('../../models');
+const { Categoria, Producto, Sucursal } = require('../../models');
 const sequelize = require('../../config/database');
 const { ajustarStockSucursal, mezclarStockPorSucursal } = require('../inventario/stock.service');
 
@@ -60,13 +60,23 @@ async function obtenerProducto(id, alcance) {
 }
 
 async function crearProducto({ categoria_id, nombre, codigo_barras, codigo, precio, costo, stock, sucursal_id, es_vendible, imagen }, alcance) {
-  const producto = await Producto.create({ categoria_id, nombre, codigo_barras, codigo, precio, costo, stock: stock !== undefined ? 0 : null, es_vendible, imagen });
+  let sucursalDestino;
+  const conStock = stock !== undefined && stock !== null;
 
-  if (stock !== undefined && stock !== null) {
-    const sucursalDestino = alcance.acceso_todas ? sucursal_id : alcance.sucursal_id;
+  if (conStock) {
+    sucursalDestino = alcance.acceso_todas ? sucursal_id : alcance.sucursal_id;
     if (alcance.acceso_todas && !sucursalDestino) {
       throw Object.assign(new Error('sucursal_id es requerido para asignar stock inicial'), { status: 400 });
     }
+    if (alcance.acceso_todas) {
+      const existe = await Sucursal.findByPk(sucursalDestino);
+      if (!existe) throw Object.assign(new Error('Sucursal no encontrada'), { status: 404 });
+    }
+  }
+
+  const producto = await Producto.create({ categoria_id, nombre, codigo_barras, codigo, precio, costo, stock: conStock ? 0 : null, es_vendible, imagen });
+
+  if (conStock) {
     await ajustarStockSucursal({ producto_id: producto.id, sucursal_id: sucursalDestino, tipo: 'ajuste', cantidad: stock, usuario_id: alcance.usuario_id, nota: 'Stock inicial' });
   }
 
