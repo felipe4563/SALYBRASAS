@@ -4,6 +4,7 @@ import { Plus, Pencil, Trash2, Package, Tag, AlertCircle, RefreshCw, ImagePlus, 
 import { getCategorias, crearCategoria, actualizarCategoria, eliminarCategoria } from '../../api/categorias';
 import { getProductos, crearProducto, actualizarProducto, eliminarProducto, subirImagenProducto } from '../../api/productos';
 import { usePermisos } from '../../hooks/usePermisos';
+import { useAuthStore } from '../../store/authStore';
 import Modal from '../../components/ui/Modal';
 import { BASE_URL } from '../../api/configuracion';
 
@@ -20,6 +21,7 @@ export default function ProductosPage() {
   const puedeCrear  = tienePermiso('productos', 'crear');
   const puedeEditar = tienePermiso('productos', 'editar');
   const puedeEliminar = tienePermiso('productos', 'eliminar');
+  const accesoTodas = useAuthStore((s) => s.usuario?.sucursal_activa?.id == null);
   const [tab, setTab] = useState('categorias');
 
   if (!puedeVer) {
@@ -313,7 +315,18 @@ function TabProductos({ puedeCrear, puedeEditar, puedeEliminar }) {
                     Bs {parseFloat(prod.precio).toFixed(2)}
                   </td>
                   <td className="px-4 py-3 text-right text-gray-500 dark:text-gray-400 hidden md:table-cell">
-                    {prod.stock ?? '∞'}
+                    {prod.stock === null
+                      ? '∞'
+                      : accesoTodas && prod.stock_por_sucursal?.length
+                        ? (
+                          <div className="flex flex-col gap-0.5 text-xs">
+                            {prod.stock_por_sucursal.map(s => (
+                              <span key={s.sucursal_id}>{s.nombre}: {s.stock}</span>
+                            ))}
+                          </div>
+                        )
+                        : prod.stock
+                    }
                   </td>
                   {(puedeEditar || puedeEliminar) && (
                     <td className="px-4 py-3">
