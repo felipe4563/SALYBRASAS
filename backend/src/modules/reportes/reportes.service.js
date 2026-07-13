@@ -43,9 +43,11 @@ async function inventario({ desde, hasta, sucursal_id, acceso_todas } = {}) {
   });
 }
 
-async function compras({ desde, hasta } = {}) {
+async function compras({ desde, hasta, sucursal_id, acceso_todas } = {}) {
+  const where = filtroFecha(desde, hasta);
+  if (!acceso_todas) where.sucursal_id = sucursal_id;
   return Compra.findAll({
-    where: filtroFecha(desde, hasta),
+    where,
     include: [
       { model: Proveedor, as: 'proveedor', attributes: ['id', 'nombre'] },
       { model: Usuario,   as: 'usuario',   attributes: ['id', 'nombre'] },

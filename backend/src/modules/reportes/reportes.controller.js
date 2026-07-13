@@ -13,7 +13,7 @@ async function getInventario(req, res, next) {
 }
 
 async function getCompras(req, res, next) {
-  try { res.json({ ok: true, datos: await svc.compras(req.query) }); } catch (e) { next(e); }
+  try { res.json({ ok: true, datos: await svc.compras({ ...req.query, ..._alcance(req) }) }); } catch (e) { next(e); }
 }
 
 async function getCaja(req, res, next) {
