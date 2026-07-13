@@ -63,7 +63,7 @@ socket.on('connect', () => {
     socket.emit('unirse_sucursal', config.sucursal_id);
     console.log(`[${ts()}] → Unido a la sala de la sucursal ${config.sucursal_id}`);
   } else {
-    console.log(`[${ts()}] ⚠ config.json no tiene sucursal_id — este agente recibirá eventos de todas las sucursales`);
+    console.log(`[${ts()}] ⚠ config.json no tiene sucursal_id — este agente NO recibirá ningún evento de impresión hasta que se configure`);
   }
 });
 socket.on('disconnect',    () => console.log(`[${ts()}] ✗ Desconectado — reintentando...`));
