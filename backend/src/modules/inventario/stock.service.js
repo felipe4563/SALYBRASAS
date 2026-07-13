@@ -36,7 +36,7 @@ async function ajustarStockSucursal({ producto_id, sucursal_id, tipo, cantidad, 
   return { stock_anterior, stock_nuevo };
 }
 
-async function mezclarStockPorSucursal(productos, { sucursal_id, acceso_todas }) {
+async function mezclarStockPorSucursal(productos, { sucursal_id, acceso_todas } = {}) {
   const productoIds = productos.map(p => p.id ?? p.dataValues?.id);
   const filas = await ProductoStockSucursal.findAll({
     where: { producto_id: productoIds },

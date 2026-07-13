@@ -52,4 +52,20 @@ describe('Stock de productos por sucursal', () => {
     const creado = res.body.datos.find(p => p.nombre === 'Producto Stock Inicial Test');
     expect(creado.stock).toBe(30);
   });
+
+  it('PUT /api/v1/productos/:id no crashea para un producto con stock (regresión)', async () => {
+    const crearRes = await request(app)
+      .post('/api/v1/productos')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ categoria_id: categoriaId, nombre: 'Producto Editar Stock Test', precio: 15, stock: 10 });
+
+    expect(crearRes.status).toBe(201);
+
+    const res = await request(app)
+      .put(`/api/v1/productos/${crearRes.body.datos.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ nombre: 'Producto Editado Test' });
+
+    expect(res.status).toBe(200);
+  });
 });
