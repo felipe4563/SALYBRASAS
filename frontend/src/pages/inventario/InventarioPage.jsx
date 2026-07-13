@@ -3,6 +3,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { usePermisos } from '../../hooks/usePermisos';
 import { getInventario, registrarEntrada, registrarSalida, registrarAjuste } from '../../api/inventario';
 import { getProductos } from '../../api/productos';
+import { useAuthStore } from '../../store/authStore';
+import { getSucursales } from '../../api/sucursales';
 import {
   Boxes, ArrowDownCircle, ArrowUpCircle, SlidersHorizontal,
   Search, X, ChevronDown, ChevronUp, PackageOpen, AlertTriangle,
@@ -31,11 +33,12 @@ function BadgeTipo({ tipo }) {
 }
 
 /* ─── modal movimiento ─── */
-function ModalMovimiento({ productos, onClose, onGuardar }) {
+function ModalMovimiento({ productos, accesoTodas, sucursales, onClose, onGuardar }) {
   const [tipo, setTipo] = useState('entrada');
   const [productoId, setProductoId] = useState('');
   const [cantidad, setCantidad] = useState('');
   const [nota, setNota] = useState('');
+  const [sucursalId, setSucursalId] = useState('');
   const [error, setError] = useState('');
 
   const accentColor = tipo === 'entrada' ? 'emerald' : tipo === 'salida' ? 'rose' : 'amber';
@@ -46,8 +49,18 @@ function ModalMovimiento({ productos, onClose, onGuardar }) {
       setError('Producto y cantidad son requeridos');
       return;
     }
+    if (accesoTodas && !sucursalId) {
+      setError('Elegí la sucursal destino');
+      return;
+    }
     setError('');
-    onGuardar({ tipo, producto_id: Number(productoId), cantidad: Number(cantidad), nota });
+    onGuardar({
+      tipo,
+      producto_id: Number(productoId),
+      cantidad: Number(cantidad),
+      nota,
+      ...(accesoTodas ? { sucursal_id: Number(sucursalId) } : {}),
+    });
   };
 
   return (
@@ -90,6 +103,23 @@ function ModalMovimiento({ productos, onClose, onGuardar }) {
               ))}
             </div>
           </div>
+
+          {/* sucursal destino (solo acceso-todas) */}
+          {accesoTodas && (
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5 uppercase tracking-wide">
+                Sucursal destino
+              </label>
+              <select
+                value={sucursalId}
+                onChange={e => setSucursalId(e.target.value)}
+                className="w-full rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                <option value="">Seleccionar sucursal...</option>
+                {sucursales.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+              </select>
+            </div>
+          )}
 
           {/* producto */}
           <div>
@@ -213,6 +243,13 @@ export default function InventarioPage() {
   const { tienePermiso } = usePermisos();
   const qc = useQueryClient();
 
+  const accesoTodas = useAuthStore((s) => s.usuario?.sucursal_activa?.id == null);
+  const { data: sucursales = [] } = useQuery({
+    queryKey: ['sucursales'],
+    queryFn: getSucursales,
+    enabled: accesoTodas,
+  });
+
   const puedoVer     = tienePermiso('inventario', 'ver');
   const puedoEntrada = tienePermiso('inventario', 'entrada');
   const puedoSalida  = tienePermiso('inventario', 'salida');
@@ -312,6 +349,8 @@ export default function InventarioPage() {
       {modal && (
         <ModalMovimiento
           productos={productosActivos}
+          accesoTodas={accesoTodas}
+          sucursales={sucursales}
           onClose={() => setModal(false)}
           onGuardar={(datos) => mutMovimiento.mutate(datos)}
         />
