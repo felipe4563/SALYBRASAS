@@ -21,7 +21,6 @@ export default function ProductosPage() {
   const puedeCrear  = tienePermiso('productos', 'crear');
   const puedeEditar = tienePermiso('productos', 'editar');
   const puedeEliminar = tienePermiso('productos', 'eliminar');
-  const accesoTodas = useAuthStore((s) => s.usuario?.sucursal_activa?.id == null);
   const [tab, setTab] = useState('categorias');
 
   if (!puedeVer) {
@@ -215,6 +214,7 @@ function FormCategoriaModal({ cat, onClose, onGuardar, guardando, error }) {
 /* ─── Tab Productos ──────────────────────────────────────────────────────── */
 
 function TabProductos({ puedeCrear, puedeEditar, puedeEliminar }) {
+  const accesoTodas = useAuthStore((s) => s.usuario?.sucursal_activa?.id == null);
   const qc = useQueryClient();
   const [modal, setModal] = useState(null);
   const [confirmEliminar, setConfirmEliminar] = useState(null);
