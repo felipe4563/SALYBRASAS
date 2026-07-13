@@ -70,3 +70,72 @@ describe('Compras por sucursal', () => {
     expect(filaOtra).toBeNull();
   });
 });
+
+const { Rol, Usuario } = require('../src/models');
+const bcrypt = require('bcryptjs');
+
+describe('Compras - aislamiento entre sucursales (acceso por id)', () => {
+  let sucursalA, sucursalB, usuarioAId, usuarioBId, tokenA, tokenB, proveedorA, productoA, compraAId;
+
+  beforeAll(async () => {
+    sucursalA = await Sucursal.create({ nombre: 'Sucursal Compras Aislamiento A' });
+    sucursalB = await Sucursal.create({ nombre: 'Sucursal Compras Aislamiento B' });
+    proveedorA = await Proveedor.create({ nombre: 'Proveedor Compras Aislamiento A' });
+    const categoria = await Categoria.create({ nombre: 'Categoria Compras Aislamiento A' });
+    productoA = await Producto.create({ categoria_id: categoria.id, nombre: 'Producto Compras Aislamiento A', precio: 8, stock: 0 });
+
+    // Cajero no tiene permisos de compras; usamos rol Administrador pero con
+    // acceso_todas_sucursales = 0 para que quede restringido a su sucursal.
+    const rol = await Rol.findOne({ where: { nombre: 'Administrador' } });
+    const hash = await bcrypt.hash('clave123', 10);
+    const usuarioA = await Usuario.create({ rol_id: rol.id, nombre: 'Compras Aislamiento A', email: 'compras-aislamiento-a-test@restaurante.com', contrasena: hash, acceso_todas_sucursales: 0 });
+    await usuarioA.addSucursal(sucursalA);
+    usuarioAId = usuarioA.id;
+
+    const usuarioB = await Usuario.create({ rol_id: rol.id, nombre: 'Compras Aislamiento B', email: 'compras-aislamiento-b-test@restaurante.com', contrasena: hash, acceso_todas_sucursales: 0 });
+    await usuarioB.addSucursal(sucursalB);
+    usuarioBId = usuarioB.id;
+
+    const loginA = await request(app).post('/api/v1/auth/login').send({ email: 'compras-aislamiento-a-test@restaurante.com', contrasena: 'clave123' });
+    tokenA = loginA.body.datos.token;
+    const loginB = await request(app).post('/api/v1/auth/login').send({ email: 'compras-aislamiento-b-test@restaurante.com', contrasena: 'clave123' });
+    tokenB = loginB.body.datos.token;
+
+    const crear = await request(app)
+      .post('/api/v1/compras')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ proveedor_id: proveedorA.id, items: [{ producto_id: productoA.id, cantidad: 4, costo_unitario: 2 }] });
+    compraAId = crear.body.datos.id;
+  });
+
+  afterAll(async () => {
+    await DetalleCompra.destroy({ where: { producto_id: productoA.id } });
+    await Compra.destroy({ where: { proveedor_id: proveedorA.id } });
+    await ProductoStockSucursal.destroy({ where: { producto_id: productoA.id } });
+    await Producto.destroy({ where: { id: productoA.id } });
+    await Proveedor.destroy({ where: { id: proveedorA.id } });
+    await Usuario.destroy({ where: { id: [usuarioAId, usuarioBId] } });
+    await Sucursal.destroy({ where: { id: [sucursalA.id, sucursalB.id] } });
+  });
+
+  it('un usuario de otra sucursal NO puede leer una compra por id (404)', async () => {
+    const res = await request(app)
+      .get(`/api/v1/compras/${compraAId}`)
+      .set('Authorization', `Bearer ${tokenB}`);
+    expect(res.status).toBe(404);
+  });
+
+  it('un usuario de otra sucursal NO puede recibir una compra de otra sucursal (404)', async () => {
+    const res = await request(app)
+      .put(`/api/v1/compras/${compraAId}/recibir`)
+      .set('Authorization', `Bearer ${tokenB}`);
+    expect(res.status).toBe(404);
+  });
+
+  it('el usuario dueño de la sucursal SÍ puede leer su propia compra', async () => {
+    const res = await request(app)
+      .get(`/api/v1/compras/${compraAId}`)
+      .set('Authorization', `Bearer ${tokenA}`);
+    expect(res.status).toBe(200);
+  });
+});

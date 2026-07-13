@@ -1,5 +1,9 @@
 const svc = require('./compras.service');
 
+function _alcance(req) {
+  return { sucursal_id: req.usuario.sucursal_id, acceso_todas: req.usuario.acceso_todas };
+}
+
 async function listarProveedores(req, res, next) {
   try { res.json({ ok: true, datos: await svc.listarProveedores() }); }
   catch (err) { next(err); }
@@ -23,12 +27,12 @@ async function desactivarProveedor(req, res, next) {
 }
 
 async function listarCompras(req, res, next) {
-  try { res.json({ ok: true, datos: await svc.listarCompras({ sucursal_id: req.usuario.sucursal_id, acceso_todas: req.usuario.acceso_todas }) }); }
+  try { res.json({ ok: true, datos: await svc.listarCompras(_alcance(req)) }); }
   catch (err) { next(err); }
 }
 
 async function obtenerCompra(req, res, next) {
-  try { res.json({ ok: true, datos: await svc.obtenerCompra(req.params.id) }); }
+  try { res.json({ ok: true, datos: await svc.obtenerCompra(req.params.id, _alcance(req)) }); }
   catch (err) { next(err); }
 }
 
@@ -43,12 +47,12 @@ async function crearCompra(req, res, next) {
 }
 
 async function actualizarCompra(req, res, next) {
-  try { res.json({ ok: true, datos: await svc.actualizarCompra(req.params.id, req.body) }); }
+  try { res.json({ ok: true, datos: await svc.actualizarCompra(req.params.id, req.body, _alcance(req)) }); }
   catch (err) { next(err); }
 }
 
 async function recibirCompra(req, res, next) {
-  try { res.json({ ok: true, datos: await svc.recibirCompra(req.params.id, req.usuario.id) }); }
+  try { res.json({ ok: true, datos: await svc.recibirCompra(req.params.id, req.usuario.id, _alcance(req)) }); }
   catch (err) { next(err); }
 }
 

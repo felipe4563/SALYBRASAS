@@ -39,9 +39,12 @@ async function listarCompras(alcance = {}) {
   return Compra.findAll({ where, include: INCLUDE_COMPRA, order: [['creado_en', 'DESC']] });
 }
 
-async function obtenerCompra(id) {
+async function obtenerCompra(id, alcance) {
   const c = await Compra.findByPk(id, { include: INCLUDE_COMPRA });
   if (!c) throw Object.assign(new Error('Compra no encontrada'), { status: 404 });
+  if (alcance && !alcance.acceso_todas && c.sucursal_id !== alcance.sucursal_id) {
+    throw Object.assign(new Error('Compra no encontrada'), { status: 404 });
+  }
   return c;
 }
 
@@ -66,17 +69,15 @@ async function crearCompra(usuario_id, sucursal_id, { proveedor_id, notas, items
   return obtenerCompra(compra.id);
 }
 
-async function actualizarCompra(id, { notas }) {
-  const c = await Compra.findByPk(id);
-  if (!c) throw Object.assign(new Error('Compra no encontrada'), { status: 404 });
+async function actualizarCompra(id, { notas }, alcance) {
+  const c = await obtenerCompra(id, alcance);
   if (c.estado !== 'pendiente') throw Object.assign(new Error('Solo se pueden editar compras pendientes'), { status: 409 });
   await c.update({ notas });
-  return obtenerCompra(id);
+  return obtenerCompra(id, alcance);
 }
 
-async function recibirCompra(id, usuario_id) {
-  const compra = await Compra.findByPk(id, { include: INCLUDE_COMPRA });
-  if (!compra) throw Object.assign(new Error('Compra no encontrada'), { status: 404 });
+async function recibirCompra(id, usuario_id, alcance) {
+  const compra = await obtenerCompra(id, alcance);
   if (compra.estado !== 'pendiente') throw Object.assign(new Error('La compra ya fue recibida'), { status: 409 });
 
   await sequelize.transaction(async (t) => {
@@ -89,7 +90,7 @@ async function recibirCompra(id, usuario_id) {
     await compra.update({ estado: 'recibido' }, { transaction: t });
   });
 
-  return obtenerCompra(id);
+  return obtenerCompra(id, alcance);
 }
 
 module.exports = { listarProveedores, crearProveedor, actualizarProveedor, desactivarProveedor, listarCompras, obtenerCompra, crearCompra, actualizarCompra, recibirCompra };
