@@ -1,5 +1,9 @@
 const svc = require('./productos.service');
 
+function _alcance(req) {
+  return { sucursal_id: req.usuario.sucursal_id, acceso_todas: req.usuario.acceso_todas, usuario_id: req.usuario.id };
+}
+
 async function listarCategorias(req, res, next) {
   try { res.json({ ok: true, datos: await svc.listarCategorias() }); }
   catch (err) { next(err); }
@@ -23,12 +27,12 @@ async function eliminarCategoria(req, res, next) {
 }
 
 async function listarProductos(req, res, next) {
-  try { res.json({ ok: true, datos: await svc.listarProductos(req.query) }); }
+  try { res.json({ ok: true, datos: await svc.listarProductos(req.query, _alcance(req)) }); }
   catch (err) { next(err); }
 }
 
 async function obtenerProducto(req, res, next) {
-  try { res.json({ ok: true, datos: await svc.obtenerProducto(req.params.id) }); }
+  try { res.json({ ok: true, datos: await svc.obtenerProducto(req.params.id, _alcance(req)) }); }
   catch (err) { next(err); }
 }
 
@@ -38,7 +42,7 @@ async function crearProducto(req, res, next) {
     if (!categoria_id || !nombre || precio === undefined) {
       return res.status(400).json({ ok: false, mensaje: 'categoria_id, nombre y precio son requeridos' });
     }
-    res.status(201).json({ ok: true, datos: await svc.crearProducto(req.body) });
+    res.status(201).json({ ok: true, datos: await svc.crearProducto(req.body, _alcance(req)) });
   } catch (err) { next(err); }
 }
 
