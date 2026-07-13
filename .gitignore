@@ -1,5 +1,6 @@
-# Agente de impresión térmica (compilado localmente)
-print-agent/
+# Agente de impresión térmica (compilado localmente, config es per-location)
+print-agent/*
+!print-agent/agent.js
 node_modules/
 
 # Dumps de base de datos (no subir datos/backups al repo)
