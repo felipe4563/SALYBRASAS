@@ -17,7 +17,7 @@ async function getCompras(req, res, next) {
 }
 
 async function getCaja(req, res, next) {
-  try { res.json({ ok: true, datos: await svc.caja(req.query) }); } catch (e) { next(e); }
+  try { res.json({ ok: true, datos: await svc.caja({ ...req.query, ..._alcance(req) }) }); } catch (e) { next(e); }
 }
 
 module.exports = { getVentas, getInventario, getCompras, getCaja };
