@@ -5,6 +5,7 @@ import { getCategorias, crearCategoria, actualizarCategoria, eliminarCategoria }
 import { getProductos, crearProducto, actualizarProducto, eliminarProducto, subirImagenProducto } from '../../api/productos';
 import { usePermisos } from '../../hooks/usePermisos';
 import { useAuthStore } from '../../store/authStore';
+import { getSucursales } from '../../api/sucursales';
 import Modal from '../../components/ui/Modal';
 import { BASE_URL } from '../../api/configuracion';
 
@@ -215,6 +216,11 @@ function FormCategoriaModal({ cat, onClose, onGuardar, guardando, error }) {
 
 function TabProductos({ puedeCrear, puedeEditar, puedeEliminar }) {
   const accesoTodas = useAuthStore((s) => s.usuario?.sucursal_activa?.id == null);
+  const { data: sucursales = [] } = useQuery({
+    queryKey: ['sucursales'],
+    queryFn: getSucursales,
+    enabled: accesoTodas,
+  });
   const qc = useQueryClient();
   const [modal, setModal] = useState(null);
   const [confirmEliminar, setConfirmEliminar] = useState(null);
@@ -361,6 +367,8 @@ function TabProductos({ puedeCrear, puedeEditar, puedeEliminar }) {
         <FormProductoModal
           prod={modal.prod}
           categorias={categorias}
+          accesoTodas={accesoTodas}
+          sucursales={sucursales}
           onClose={() => setModal(null)}
           onGuardar={(datos) => guardar.mutate({ prod: modal.prod, datos })}
           guardando={guardar.isPending}
@@ -394,12 +402,13 @@ function TabProductos({ puedeCrear, puedeEditar, puedeEliminar }) {
   );
 }
 
-function FormProductoModal({ prod, categorias, onClose, onGuardar, guardando, error }) {
+function FormProductoModal({ prod, categorias, accesoTodas, sucursales, onClose, onGuardar, guardando, error }) {
   const [form, setForm] = useState({
     categoria_id: prod?.categoria_id ?? (categorias[0]?.id ?? ''),
     nombre:       prod?.nombre ?? '',
     precio:       prod?.precio ?? '',
     stock:        prod?.stock ?? '',
+    sucursal_id:  '',
     es_vendible:  prod?.es_vendible ?? true,
     imagen:       prod?.imagen ?? null,
   });
@@ -444,6 +453,9 @@ function FormProductoModal({ prod, categorias, onClose, onGuardar, guardando, er
     // exclusivamente vía ajustes de inventario (ajustarStockSucursal).
     if (!prod) {
       datos.stock = form.stock !== '' ? parseInt(form.stock) : null;
+      if (accesoTodas && datos.stock !== null) {
+        datos.sucursal_id = parseInt(form.sucursal_id);
+      }
     }
     onGuardar(datos);
   }
@@ -542,6 +554,16 @@ function FormProductoModal({ prod, categorias, onClose, onGuardar, guardando, er
                 placeholder="Opcional"
                 className="w-full bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl px-4 py-2.5 text-sm text-gray-800 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
               />
+              {accesoTodas && form.stock !== '' && (
+                <select
+                  value={form.sucursal_id}
+                  onChange={e => set('sucursal_id', e.target.value)}
+                  className="w-full mt-2 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl px-4 py-2.5 text-sm text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Sucursal para el stock inicial...</option>
+                  {sucursales.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+                </select>
+              )}
             </div>
           )}
         </div>
@@ -564,7 +586,10 @@ function FormProductoModal({ prod, categorias, onClose, onGuardar, guardando, er
           </button>
           <button
             onClick={handleGuardar}
-            disabled={guardando || subiendoImg || !form.nombre.trim() || !form.precio || !form.categoria_id}
+            disabled={
+              guardando || subiendoImg || !form.nombre.trim() || !form.precio || !form.categoria_id ||
+              (!prod && accesoTodas && form.stock !== '' && !form.sucursal_id)
+            }
             className="px-4 py-2 rounded-xl text-sm bg-blue-600 hover:bg-blue-700 text-white transition-colors disabled:opacity-60"
           >
             {guardando ? 'Guardando...' : 'Guardar'}
