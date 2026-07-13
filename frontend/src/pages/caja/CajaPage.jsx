@@ -13,6 +13,7 @@ import {
 } from '../../api/caja';
 import { imprimirTicketCierreCaja } from '../../utils/ticketCierreCaja';
 import { getConfiguracion } from '../../api/configuracion';
+import { getSucursales } from '../../api/sucursales';
 import { usePermisos } from '../../hooks/usePermisos';
 import { useAuth } from '../../hooks/useAuth';
 import Modal from '../../components/ui/Modal';
@@ -52,6 +53,15 @@ export default function CajaPage() {
   const { usuario } = useAuth();
   const qc = useQueryClient();
 
+  const accesoTodas = usuario?.sucursal_activa?.id == null;
+  const [sucursalId, setSucursalId] = useState('');
+
+  const { data: sucursales = [] } = useQuery({
+    queryKey: ['sucursales'],
+    queryFn: getSucursales,
+    enabled: accesoTodas,
+  });
+
   const puedeVer    = tienePermiso('caja', 'ver');
   const puedeAbrir  = tienePermiso('caja', 'abrir');
   const puedeCerrar = tienePermiso('caja', 'cerrar');
@@ -64,9 +74,9 @@ export default function CajaPage() {
   const [ultimaActualizacion, setUltimaActualizacion] = useState(null);
 
   const { data: sesion, isLoading } = useQuery({
-    queryKey: ['caja-activa'],
-    queryFn: getCajaActiva,
-    enabled: puedeVer,
+    queryKey: ['caja-activa', accesoTodas ? sucursalId : null],
+    queryFn: () => getCajaActiva(accesoTodas ? sucursalId : undefined),
+    enabled: puedeVer && (!accesoTodas || !!sucursalId),
   });
 
   const { data: config = {} } = useQuery({
@@ -128,6 +138,33 @@ export default function CajaPage() {
     );
   }
 
+  const selectorSucursal = accesoTodas && (
+    <div className="flex items-center gap-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3">
+      <label className="text-sm font-medium text-gray-600 dark:text-gray-300 shrink-0">Sucursal</label>
+      <select
+        value={sucursalId}
+        onChange={e => setSucursalId(e.target.value)}
+        className="flex-1 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+      >
+        <option value="">Elegí una sucursal...</option>
+        {sucursales.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+      </select>
+    </div>
+  );
+
+  if (accesoTodas && !sucursalId) {
+    return (
+      <div className="space-y-6 max-w-5xl">
+        <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">Caja</h1>
+        {selectorSucursal}
+        <div className="flex flex-col items-center justify-center py-16 gap-3 text-gray-400 dark:text-gray-600">
+          <Wallet className="w-10 h-10" />
+          <p className="text-sm">Elegí una sucursal para ver y operar su caja</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 max-w-5xl">
 
@@ -143,6 +180,8 @@ export default function CajaPage() {
           </button>
         )}
       </div>
+
+      {selectorSucursal}
 
       {/* Sin caja abierta */}
       {!sesion && (
@@ -390,6 +429,7 @@ export default function CajaPage() {
       {/* Modales */}
       {modalAbrir && (
         <ModalAbrirCaja
+          sucursalId={accesoTodas ? sucursalId : undefined}
           onClose={() => setModalAbrir(false)}
           onExito={() => { setModalAbrir(false); invalidar(); }}
         />
@@ -451,12 +491,12 @@ function MetricCard({ label, valor, icono, color }) {
 
 /* ─── Modal Abrir Caja ──────────────────────────────────────────────────── */
 
-function ModalAbrirCaja({ onClose, onExito }) {
+function ModalAbrirCaja({ sucursalId, onClose, onExito }) {
   const [monto, setMonto] = useState('');
   const [error, setError] = useState(null);
 
   const abrir = useMutation({
-    mutationFn: () => abrirCaja(parseFloat(monto) || 0),
+    mutationFn: () => abrirCaja(parseFloat(monto) || 0, sucursalId),
     onSuccess: onExito,
     onError: (err) => setError(err?.response?.data?.mensaje ?? 'Error al abrir la caja'),
   });
