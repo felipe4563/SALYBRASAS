@@ -28,7 +28,13 @@ async function listar(alcance = {}) {
   });
 }
 
-async function obtener(id) {
+function _verificarAlcance(sesion, alcance) {
+  if (alcance && !alcance.acceso_todas && sesion.sucursal_id !== alcance.sucursal_id) {
+    throw Object.assign(new Error('Sesión no encontrada'), { status: 404 });
+  }
+}
+
+async function obtener(id, alcance) {
   const s = await SesionCaja.findByPk(id, {
     include: [
       { model: Usuario, as: 'usuario', attributes: ['id', 'nombre'] },
@@ -37,6 +43,7 @@ async function obtener(id) {
     ],
   });
   if (!s) throw Object.assign(new Error('Sesión no encontrada'), { status: 404 });
+  _verificarAlcance(s, alcance);
   return s;
 }
 
@@ -46,9 +53,10 @@ async function abrir(usuario_id, sucursal_id, monto_apertura = 0) {
   return SesionCaja.create({ usuario_id, sucursal_id, monto_apertura });
 }
 
-async function registrarGasto(sesion_id, usuario_id, { descripcion, monto }) {
+async function registrarGasto(sesion_id, usuario_id, { descripcion, monto }, alcance) {
   const sesion = await SesionCaja.findByPk(sesion_id);
   if (!sesion) throw Object.assign(new Error('Sesión no encontrada'), { status: 404 });
+  _verificarAlcance(sesion, alcance);
   if (sesion.estado !== 'abierta') throw Object.assign(new Error('La sesión ya está cerrada'), { status: 409 });
 
   const gasto = await Gasto.create({ sesion_caja_id: sesion_id, usuario_id, descripcion, monto });
@@ -68,7 +76,10 @@ async function registrarGasto(sesion_id, usuario_id, { descripcion, monto }) {
   return gasto;
 }
 
-async function listarGastos(sesion_id) {
+async function listarGastos(sesion_id, alcance) {
+  const sesion = await SesionCaja.findByPk(sesion_id);
+  if (!sesion) throw Object.assign(new Error('Sesión no encontrada'), { status: 404 });
+  _verificarAlcance(sesion, alcance);
   return Gasto.findAll({
     where: { sesion_caja_id: sesion_id },
     include: [{ model: Usuario, as: 'usuario', attributes: ['id', 'nombre'] }],
@@ -76,9 +87,10 @@ async function listarGastos(sesion_id) {
   });
 }
 
-async function cerrar(sesion_id, usuario_id, denominaciones = []) {
+async function cerrar(sesion_id, usuario_id, denominaciones = [], alcance) {
   const sesion = await SesionCaja.findByPk(sesion_id);
   if (!sesion) throw Object.assign(new Error('Sesión no encontrada'), { status: 404 });
+  _verificarAlcance(sesion, alcance);
   if (sesion.estado !== 'abierta') throw Object.assign(new Error('La sesión ya está cerrada'), { status: 409 });
   if (sesion.usuario_id !== usuario_id) throw Object.assign(new Error('Solo el cajero que abrió puede cerrar la sesión'), { status: 403 });
 
@@ -113,11 +125,11 @@ async function cerrar(sesion_id, usuario_id, denominaciones = []) {
     cerrado_en: new Date(),
   });
 
-  return obtener(sesion_id);
+  return obtener(sesion_id, alcance);
 }
 
-async function reporte(sesion_id) {
-  const sesion = await obtener(sesion_id);
+async function reporte(sesion_id, alcance) {
+  const sesion = await obtener(sesion_id, alcance);
 
   // Ventas por método de pago (todas las filas del GROUP BY)
   const ventasPorMetodoArr = await sequelize.query(
