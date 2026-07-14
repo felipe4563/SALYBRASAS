@@ -4,6 +4,16 @@ async function listar() {
   return Sucursal.findAll({ order: [['nombre', 'ASC']] });
 }
 
+// Sin autenticación — usado por el instalador del agente de impresión para
+// elegir la sucursal antes de tener credenciales. Solo id + nombre.
+async function listarPublico() {
+  return Sucursal.findAll({
+    where: { activo: 1 },
+    attributes: ['id', 'nombre'],
+    order: [['nombre', 'ASC']],
+  });
+}
+
 async function crear({ nombre, direccion, telefono, activo = 1 }) {
   if (!nombre || !nombre.trim()) {
     throw Object.assign(new Error('El nombre es requerido'), { status: 400 });
@@ -31,4 +41,4 @@ async function eliminar(id) {
   await sucursal.destroy();
 }
 
-module.exports = { listar, crear, actualizar, eliminar };
+module.exports = { listar, listarPublico, crear, actualizar, eliminar };

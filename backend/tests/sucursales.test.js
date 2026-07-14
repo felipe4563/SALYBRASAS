@@ -53,4 +53,35 @@ describe('Sucursales API', () => {
       .send({ direccion: 'Sin nombre' });
     expect(res.status).toBe(400);
   });
+
+  it('GET /sucursales/publico no requiere token y devuelve solo id+nombre', async () => {
+    const crear = await request(app)
+      .post('/api/v1/sucursales')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ nombre: 'Sucursal Publica Test', direccion: 'Dir', telefono: '70000000' });
+    const id = crear.body.datos.id;
+
+    const res = await request(app).get('/api/v1/sucursales/publico');
+    expect(res.status).toBe(200);
+
+    const encontrada = res.body.datos.find((s) => s.id === id);
+    expect(encontrada).toBeDefined();
+    expect(Object.keys(encontrada).sort()).toEqual(['id', 'nombre']);
+
+    await request(app).delete(`/api/v1/sucursales/${id}`).set('Authorization', `Bearer ${adminToken}`);
+  });
+
+  it('GET /sucursales/publico no incluye sucursales inactivas', async () => {
+    const crear = await request(app)
+      .post('/api/v1/sucursales')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ nombre: 'Sucursal Publica Inactiva Test', direccion: 'Dir', telefono: '70000000', activo: 0 });
+    const id = crear.body.datos.id;
+
+    const res = await request(app).get('/api/v1/sucursales/publico');
+    expect(res.status).toBe(200);
+    expect(res.body.datos.some((s) => s.id === id)).toBe(false);
+
+    await request(app).delete(`/api/v1/sucursales/${id}`).set('Authorization', `Bearer ${adminToken}`);
+  });
 });
