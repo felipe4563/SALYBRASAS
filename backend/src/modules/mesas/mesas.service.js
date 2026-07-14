@@ -6,8 +6,17 @@ function _filtroSucursal({ sucursal_id, acceso_todas }) {
   return acceso_todas ? {} : { sucursal_id };
 }
 
+// Orden natural ("MESA 2" antes que "MESA 10") en vez del alfabético que
+// hace ORDER BY nombre en SQL, donde "MESA 10" queda antes que "MESA 2".
+function _ordenNatural(a, b) {
+  return a.nombre.localeCompare(b.nombre, 'es', { numeric: true, sensitivity: 'base' });
+}
+
 async function listarAreas(alcance) {
-  return Area.findAll({ where: _filtroSucursal(alcance), include: [{ model: Mesa, as: 'mesas' }], order: [['nombre', 'ASC']] });
+  const areas = await Area.findAll({ where: _filtroSucursal(alcance), include: [{ model: Mesa, as: 'mesas' }] });
+  areas.sort(_ordenNatural);
+  areas.forEach((area) => area.mesas.sort(_ordenNatural));
+  return areas;
 }
 
 async function crearArea({ nombre }, sucursal_id) {
@@ -39,11 +48,12 @@ async function eliminarArea(id, alcance) {
 
 async function listarMesas(area_id, alcance) {
   const where = area_id ? { area_id } : {};
-  return Mesa.findAll({
+  const mesas = await Mesa.findAll({
     where,
     include: [{ model: Area, as: 'area', attributes: ['id', 'nombre', 'sucursal_id'], where: _filtroSucursal(alcance) }],
-    order: [['nombre', 'ASC']],
   });
+  mesas.sort(_ordenNatural);
+  return mesas;
 }
 
 async function obtenerMesa(id, alcance) {
