@@ -1,8 +1,9 @@
 import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Pencil, Trash2, Package, Tag, AlertCircle, RefreshCw, ImagePlus, X } from 'lucide-react';
+import { Plus, Pencil, Trash2, Package, Tag, ListChecks, ChevronUp, ChevronDown, AlertCircle, RefreshCw, ImagePlus, X } from 'lucide-react';
 import { getCategorias, crearCategoria, actualizarCategoria, eliminarCategoria } from '../../api/categorias';
 import { getProductos, crearProducto, actualizarProducto, eliminarProducto, subirImagenProducto } from '../../api/productos';
+import { getGruposOpciones, crearGrupoOpciones, actualizarGrupoOpciones, eliminarGrupoOpciones } from '../../api/gruposOpciones';
 import { usePermisos } from '../../hooks/usePermisos';
 import { useAuthStore } from '../../store/authStore';
 import { getSucursales } from '../../api/sucursales';
@@ -14,6 +15,7 @@ const API_BASE = BASE_URL;
 const TABS = [
   { id: 'categorias', label: 'Categorías', Icono: Tag },
   { id: 'productos',  label: 'Productos',  Icono: Package },
+  { id: 'opciones',   label: 'Opciones',   Icono: ListChecks },
 ];
 
 export default function ProductosPage() {
@@ -56,6 +58,7 @@ export default function ProductosPage() {
 
       {tab === 'categorias' && <TabCategorias puedeCrear={puedeCrear} puedeEditar={puedeEditar} puedeEliminar={puedeEliminar} />}
       {tab === 'productos'  && <TabProductos  puedeCrear={puedeCrear} puedeEditar={puedeEditar} puedeEliminar={puedeEliminar} />}
+      {tab === 'opciones' && <TabOpciones puedeCrear={puedeCrear} puedeEditar={puedeEditar} puedeEliminar={puedeEliminar} />}
     </div>
   );
 }
@@ -227,6 +230,7 @@ function TabProductos({ puedeCrear, puedeEditar, puedeEliminar }) {
   const [filtroCategoria, setFiltroCategoria] = useState('');
 
   const { data: categorias = [] } = useQuery({ queryKey: ['categorias'], queryFn: getCategorias });
+  const { data: gruposOpciones = [] } = useQuery({ queryKey: ['grupos-opciones'], queryFn: getGruposOpciones });
   const { data: productos = [], isLoading } = useQuery({
     queryKey: ['productos', filtroCategoria],
     queryFn: () => getProductos(filtroCategoria ? { categoria_id: filtroCategoria } : {}),
@@ -367,6 +371,7 @@ function TabProductos({ puedeCrear, puedeEditar, puedeEliminar }) {
         <FormProductoModal
           prod={modal.prod}
           categorias={categorias}
+          gruposOpciones={gruposOpciones}
           accesoTodas={accesoTodas}
           sucursales={sucursales}
           onClose={() => setModal(null)}
@@ -402,9 +407,10 @@ function TabProductos({ puedeCrear, puedeEditar, puedeEliminar }) {
   );
 }
 
-function FormProductoModal({ prod, categorias, accesoTodas, sucursales, onClose, onGuardar, guardando, error }) {
+function FormProductoModal({ prod, categorias, gruposOpciones, accesoTodas, sucursales, onClose, onGuardar, guardando, error }) {
   const [form, setForm] = useState({
     categoria_id: prod?.categoria_id ?? (categorias[0]?.id ?? ''),
+    grupo_opciones_id: prod?.grupo_opciones?.id ?? '',
     nombre:       prod?.nombre ?? '',
     precio:       prod?.precio ?? '',
     stock:        prod?.stock ?? '',
@@ -444,6 +450,7 @@ function FormProductoModal({ prod, categorias, accesoTodas, sucursales, onClose,
   function handleGuardar() {
     const datos = {
       categoria_id: parseInt(form.categoria_id),
+      grupo_opciones_id: form.grupo_opciones_id ? parseInt(form.grupo_opciones_id) : null,
       nombre: form.nombre,
       precio: parseFloat(form.precio),
       es_vendible: form.es_vendible,
@@ -534,6 +541,17 @@ function FormProductoModal({ prod, categorias, accesoTodas, sucursales, onClose,
               {categorias.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
             </select>
           </div>
+          <div className="col-span-2">
+            <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">Grupo de opciones</label>
+            <select
+              value={form.grupo_opciones_id}
+              onChange={e => set('grupo_opciones_id', e.target.value)}
+              className="w-full bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl px-4 py-2.5 text-sm text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">Ninguno</option>
+              {gruposOpciones.map(g => <option key={g.id} value={g.id}>{g.nombre}</option>)}
+            </select>
+          </div>
           <div>
             <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">Precio (Bs) *</label>
             <input
@@ -590,6 +608,216 @@ function FormProductoModal({ prod, categorias, accesoTodas, sucursales, onClose,
               guardando || subiendoImg || !form.nombre.trim() || !form.precio || !form.categoria_id ||
               (!prod && accesoTodas && form.stock !== '' && !form.sucursal_id)
             }
+            className="px-4 py-2 rounded-xl text-sm bg-blue-600 hover:bg-blue-700 text-white transition-colors disabled:opacity-60"
+          >
+            {guardando ? 'Guardando...' : 'Guardar'}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+/* ─── Tab Opciones ───────────────────────────────────────────────────────── */
+
+function TabOpciones({ puedeCrear, puedeEditar, puedeEliminar }) {
+  const qc = useQueryClient();
+  const [modal, setModal] = useState(null);
+  const [confirmEliminar, setConfirmEliminar] = useState(null);
+
+  const { data: grupos = [], isLoading } = useQuery({ queryKey: ['grupos-opciones'], queryFn: getGruposOpciones });
+
+  const guardar = useMutation({
+    mutationFn: ({ grupo, datos }) => grupo ? actualizarGrupoOpciones(grupo.id, datos) : crearGrupoOpciones(datos),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['grupos-opciones'] }); setModal(null); },
+  });
+
+  const eliminar = useMutation({
+    mutationFn: (id) => eliminarGrupoOpciones(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['grupos-opciones'] });
+      qc.invalidateQueries({ queryKey: ['productos'] });
+      setConfirmEliminar(null);
+    },
+  });
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-gray-500 dark:text-gray-400">{grupos.length} grupo(s) de opciones</p>
+        {puedeCrear && (
+          <button
+            onClick={() => setModal({ modo: 'crear' })}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-medium transition-colors"
+          >
+            <Plus className="w-4 h-4" /> Nuevo Grupo
+          </button>
+        )}
+      </div>
+
+      {isLoading && (
+        <div className="flex items-center gap-2 text-gray-400">
+          <RefreshCw className="w-4 h-4 animate-spin" /><span className="text-sm">Cargando...</span>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+        {grupos.map(grupo => (
+          <div key={grupo.id} className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="font-semibold text-gray-800 dark:text-gray-100 truncate">{grupo.nombre}</p>
+                <p className="text-xs text-gray-400 mt-1">
+                  {grupo.opciones.map(o => o.nombre).join(' · ') || 'Sin opciones'}
+                </p>
+              </div>
+              <div className="flex gap-1 shrink-0">
+                {puedeEditar && (
+                  <button onClick={() => setModal({ modo: 'editar', grupo })} className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors">
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
+                )}
+                {puedeEliminar && (
+                  <button onClick={() => setConfirmEliminar(grupo)} className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {!isLoading && grupos.length === 0 && (
+        <div className="flex flex-col items-center justify-center h-40 gap-2 text-gray-400 dark:text-gray-600">
+          <ListChecks className="w-8 h-8" />
+          <p className="text-sm">No hay grupos de opciones. Crea el primero.</p>
+        </div>
+      )}
+
+      {modal && (
+        <FormGrupoOpcionesModal
+          grupo={modal.grupo}
+          onClose={() => setModal(null)}
+          onGuardar={(datos) => guardar.mutate({ grupo: modal.grupo, datos })}
+          guardando={guardar.isPending}
+          error={guardar.error?.response?.data?.mensaje}
+        />
+      )}
+
+      {confirmEliminar && (
+        <Modal titulo="Eliminar Grupo de Opciones" onClose={() => setConfirmEliminar(null)}>
+          <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">
+            ¿Eliminar <strong>{confirmEliminar.nombre}</strong>? Los productos que lo tengan asignado quedarán sin grupo de opciones.
+          </p>
+          <div className="flex justify-end gap-3">
+            <button onClick={() => setConfirmEliminar(null)} className="px-4 py-2 rounded-xl text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+              Cancelar
+            </button>
+            <button
+              onClick={() => eliminar.mutate(confirmEliminar.id)}
+              disabled={eliminar.isPending}
+              className="px-4 py-2 rounded-xl text-sm bg-red-600 hover:bg-red-700 text-white transition-colors disabled:opacity-60"
+            >
+              {eliminar.isPending ? 'Eliminando...' : 'Eliminar'}
+            </button>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+function FormGrupoOpcionesModal({ grupo, onClose, onGuardar, guardando, error }) {
+  const [nombre, setNombre] = useState(grupo?.nombre ?? '');
+  const [opciones, setOpciones] = useState(
+    grupo?.opciones?.length ? grupo.opciones.map(o => ({ nombre: o.nombre })) : [{ nombre: '' }]
+  );
+
+  function setOpcionNombre(i, valor) {
+    setOpciones(prev => prev.map((o, idx) => idx === i ? { nombre: valor } : o));
+  }
+
+  function agregarOpcion() {
+    setOpciones(prev => [...prev, { nombre: '' }]);
+  }
+
+  function quitarOpcion(i) {
+    setOpciones(prev => prev.filter((_, idx) => idx !== i));
+  }
+
+  function moverOpcion(i, direccion) {
+    setOpciones(prev => {
+      const destino = i + direccion;
+      if (destino < 0 || destino >= prev.length) return prev;
+      const copia = [...prev];
+      [copia[i], copia[destino]] = [copia[destino], copia[i]];
+      return copia;
+    });
+  }
+
+  function handleGuardar() {
+    const opcionesValidas = opciones
+      .map(o => o.nombre.trim())
+      .filter(Boolean)
+      .map((nombre, orden) => ({ nombre, orden }));
+    onGuardar({ nombre, opciones: opcionesValidas });
+  }
+
+  const nombreValido = nombre.trim().length > 0;
+  const hayOpcionValida = opciones.some(o => o.nombre.trim().length > 0);
+
+  return (
+    <Modal titulo={grupo ? 'Editar Grupo de Opciones' : 'Nuevo Grupo de Opciones'} onClose={onClose}>
+      <div className="space-y-4">
+        <div>
+          <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">Nombre del grupo</label>
+          <input
+            autoFocus
+            value={nombre}
+            onChange={e => setNombre(e.target.value)}
+            placeholder="Ej: Término de cocción, Sabor"
+            className="w-full bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl px-4 py-2.5 text-sm text-gray-800 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
+          />
+        </div>
+
+        <div>
+          <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">Opciones</label>
+          <div className="space-y-2">
+            {opciones.map((o, i) => (
+              <div key={i} className="flex items-center gap-1.5">
+                <input
+                  value={o.nombre}
+                  onChange={e => setOpcionNombre(i, e.target.value)}
+                  placeholder={`Opción ${i + 1}`}
+                  className="flex-1 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm text-gray-800 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
+                />
+                <button type="button" onClick={() => moverOpcion(i, -1)} disabled={i === 0} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 disabled:opacity-30 transition-colors">
+                  <ChevronUp className="w-4 h-4" />
+                </button>
+                <button type="button" onClick={() => moverOpcion(i, 1)} disabled={i === opciones.length - 1} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 disabled:opacity-30 transition-colors">
+                  <ChevronDown className="w-4 h-4" />
+                </button>
+                <button type="button" onClick={() => quitarOpcion(i)} disabled={opciones.length === 1} className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-30 transition-colors">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            ))}
+          </div>
+          <button type="button" onClick={agregarOpcion} className="mt-2 flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors">
+            <Plus className="w-4 h-4" /> Agregar opción
+          </button>
+        </div>
+
+        {error && <p className="text-sm text-red-600">{error}</p>}
+
+        <div className="flex justify-end gap-3 pt-2">
+          <button onClick={onClose} className="px-4 py-2 rounded-xl text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+            Cancelar
+          </button>
+          <button
+            onClick={handleGuardar}
+            disabled={guardando || !nombreValido || !hayOpcionValida}
             className="px-4 py-2 rounded-xl text-sm bg-blue-600 hover:bg-blue-700 text-white transition-colors disabled:opacity-60"
           >
             {guardando ? 'Guardando...' : 'Guardar'}
