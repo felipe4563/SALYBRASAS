@@ -1,9 +1,9 @@
 const request = require('supertest');
 const app = require('../src/app');
-const { Sucursal, Area, Mesa, Categoria, Producto, SesionCaja, LibroCaja, Pedido } = require('../src/models');
+const { Sucursal, Area, Mesa, Categoria, Producto, SesionCaja, LibroCaja, Pedido, Caja } = require('../src/models');
 
 describe('Reportes filtrados por sucursal', () => {
-  let adminToken, sucursalOtra, pedidoOtraSucursalId, pedidoPropioId;
+  let adminToken, sucursalOtra, pedidoOtraSucursalId, pedidoPropioId, cajaOtra;
 
   beforeAll(async () => {
     const login = await request(app).post('/api/v1/auth/login').send({ email: 'admin@restaurante.com', contrasena: process.env.ADMIN_PASSWORD || 'admin123' });
@@ -13,7 +13,8 @@ describe('Reportes filtrados por sucursal', () => {
     sucursalOtra = await Sucursal.create({ nombre: 'Sucursal Reportes Test' });
     const categoria = await Categoria.create({ nombre: 'Categoria Reportes Test' });
     const producto = await Producto.create({ categoria_id: categoria.id, nombre: 'Producto Reportes Test', precio: 6, stock: null });
-    const sesion = await SesionCaja.create({ usuario_id: 1, sucursal_id: sucursalOtra.id, monto_apertura: 0 });
+    cajaOtra = await Caja.create({ sucursal_id: sucursalOtra.id, nombre: 'Caja Reportes Test' });
+    const sesion = await SesionCaja.create({ usuario_id: 1, sucursal_id: sucursalOtra.id, caja_id: cajaOtra.id, monto_apertura: 0 });
     const pedido = await Pedido.create({
       sucursal_id: sucursalOtra.id, usuario_id: 1, sesion_caja_id: sesion.id, tipo: 'llevar',
       estado: 'completado', total: 6,
@@ -35,6 +36,7 @@ describe('Reportes filtrados por sucursal', () => {
     await Pedido.destroy({ where: { id: pedidoPropioId } });
     await Pedido.destroy({ where: { id: pedidoOtraSucursalId } });
     await SesionCaja.destroy({ where: { sucursal_id: sucursalOtra.id } });
+    await Caja.destroy({ where: { sucursal_id: sucursalOtra.id } });
     await Sucursal.destroy({ where: { id: sucursalOtra.id } });
   });
 
@@ -59,7 +61,7 @@ describe('Reportes filtrados por sucursal', () => {
   });
 
   it('el reporte de caja filtra por sucursal e incluye el objeto sucursal en cada fila', async () => {
-    const sesionOtra = await SesionCaja.create({ usuario_id: 1, sucursal_id: sucursalOtra.id, monto_apertura: 0 });
+    const sesionOtra = await SesionCaja.create({ usuario_id: 1, sucursal_id: sucursalOtra.id, caja_id: cajaOtra.id, monto_apertura: 0 });
     const registroOtra = await LibroCaja.create({
       sesion_caja_id: sesionOtra.id, usuario_id: 1, tipo: 'ingreso', concepto: 'Test caja otra sucursal', monto: 50, metodo_pago: 'efectivo',
     });

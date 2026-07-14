@@ -13,7 +13,7 @@ describe('Ventas API', () => {
   });
 });
 
-const { Sucursal, Area, Mesa, Categoria, Producto, ProductoStockSucursal, Usuario, Rol, SesionCaja, Pedido, RegistroInventario, LibroCaja } = require('../src/models');
+const { Sucursal, Area, Mesa, Categoria, Producto, ProductoStockSucursal, Usuario, Rol, SesionCaja, Pedido, RegistroInventario, LibroCaja, Caja } = require('../src/models');
 const bcrypt = require('bcryptjs');
 
 describe('Ventas por sucursal', () => {
@@ -39,7 +39,8 @@ describe('Ventas por sucursal', () => {
     const login = await request(app).post('/api/v1/auth/login').send({ email: 'ventas-sucursal-b-test@restaurante.com', contrasena: 'clave123' });
     tokenB = login.body.datos.token; // única sucursal → login directo
 
-    const sesion = await SesionCaja.create({ usuario_id: usuarioBId, sucursal_id: sucursalB.id, monto_apertura: 0 });
+    const cajaB = await Caja.create({ sucursal_id: sucursalB.id, nombre: 'Caja Ventas Test B' });
+    const sesion = await SesionCaja.create({ usuario_id: usuarioBId, sucursal_id: sucursalB.id, caja_id: cajaB.id, monto_apertura: 0 });
     sesionCajaBId = sesion.id;
   });
 
@@ -48,6 +49,7 @@ describe('Ventas por sucursal', () => {
     await RegistroInventario.destroy({ where: { usuario_id: usuarioBId } });
     await LibroCaja.destroy({ where: { usuario_id: usuarioBId } });
     await SesionCaja.destroy({ where: { id: sesionCajaBId } });
+    await Caja.destroy({ where: { sucursal_id: sucursalB.id } });
     await ProductoStockSucursal.destroy({ where: { producto_id: productoId } });
     await Producto.destroy({ where: { id: productoId } });
     await Usuario.destroy({ where: { id: usuarioBId } });
@@ -108,7 +110,8 @@ describe('Ventas - aislamiento entre sucursales (acceso por id)', () => {
     const loginC = await request(app).post('/api/v1/auth/login').send({ email: 'aislamiento-c-test@restaurante.com', contrasena: 'clave123' });
     tokenC = loginC.body.datos.token;
 
-    const sesion = await SesionCaja.create({ usuario_id: usuarioAId, sucursal_id: sucursalA.id, monto_apertura: 0 });
+    const cajaA = await Caja.create({ sucursal_id: sucursalA.id, nombre: 'Caja Aislamiento A' });
+    const sesion = await SesionCaja.create({ usuario_id: usuarioAId, sucursal_id: sucursalA.id, caja_id: cajaA.id, monto_apertura: 0 });
     sesionCajaAId = sesion.id;
 
     const crear = await request(app)
@@ -121,6 +124,7 @@ describe('Ventas - aislamiento entre sucursales (acceso por id)', () => {
   afterAll(async () => {
     await Pedido.destroy({ where: { usuario_id: usuarioAId } });
     await SesionCaja.destroy({ where: { id: sesionCajaAId } });
+    await Caja.destroy({ where: { sucursal_id: sucursalA.id } });
     await Usuario.destroy({ where: { id: [usuarioAId, usuarioCId] } });
     await Mesa.destroy({ where: { id: mesaAId } });
     await Area.destroy({ where: { sucursal_id: sucursalA.id } });

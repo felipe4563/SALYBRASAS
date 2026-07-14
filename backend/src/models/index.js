@@ -33,6 +33,7 @@ const Configuracion = require('./Configuracion');
 const Reservacion = require('./Reservacion');
 const Sucursal = require('./Sucursal');
 const ProductoStockSucursal = require('./ProductoStockSucursal');
+const Caja = require('./Caja');
 
 // Roles y Permisos
 Rol.belongsToMany(Permiso, { through: RolesPermisos, foreignKey: 'rol_id', otherKey: 'permiso_id', as: 'permisos' });
@@ -112,6 +113,12 @@ Producto.hasMany(ProductoStockSucursal, { foreignKey: 'producto_id', as: 'stock_
 ProductoStockSucursal.belongsTo(Producto, { foreignKey: 'producto_id', as: 'producto' });
 ProductoStockSucursal.belongsTo(Sucursal, { foreignKey: 'sucursal_id', as: 'sucursal' });
 
+// Cajas físicas (Fase 6)
+Caja.belongsTo(Sucursal, { foreignKey: 'sucursal_id', as: 'sucursal' });
+Sucursal.hasMany(Caja, { foreignKey: 'sucursal_id', as: 'cajas' });
+Caja.hasMany(SesionCaja, { foreignKey: 'caja_id', as: 'sesiones' });
+SesionCaja.belongsTo(Caja, { foreignKey: 'caja_id', as: 'caja' });
+
 module.exports = {
   sequelize,
   Rol, Permiso, Usuario,
@@ -126,4 +133,5 @@ module.exports = {
   Reservacion,
   Sucursal,
   ProductoStockSucursal,
+  Caja,
 };

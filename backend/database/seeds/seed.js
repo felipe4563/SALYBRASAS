@@ -1,6 +1,6 @@
 require('dotenv').config();
 const bcrypt = require('bcryptjs');
-const { sequelize, Rol, Permiso, Usuario, Sucursal, Area, SesionCaja, Pedido, Compra, RegistroInventario, Producto, ProductoStockSucursal } = require('../../src/models');
+const { sequelize, Rol, Permiso, Usuario, Sucursal, Area, SesionCaja, Pedido, Compra, RegistroInventario, Producto, ProductoStockSucursal, Caja } = require('../../src/models');
 
 const PERMISOS = [
   { modulo: 'ventas', accion: 'ver', descripcion: 'Ver pedidos' },
@@ -109,6 +109,19 @@ async function seed() {
   await sequelize.query('UPDATE pedidos SET sucursal_id = ? WHERE sucursal_id IS NULL OR sucursal_id = 0', { replacements: [principal.id] });
   await sequelize.query('UPDATE compras SET sucursal_id = ? WHERE sucursal_id IS NULL OR sucursal_id = 0', { replacements: [principal.id] });
   await sequelize.query('UPDATE registros_inventario SET sucursal_id = ? WHERE sucursal_id IS NULL OR sucursal_id = 0', { replacements: [principal.id] });
+
+  // Backfill Fase 6 — una Caja Principal por cada sucursal existente
+  const sucursalesExistentes = await Sucursal.findAll();
+  for (const s of sucursalesExistentes) {
+    const [cajaPrincipal] = await Caja.findOrCreate({
+      where: { sucursal_id: s.id, nombre: 'Caja Principal' },
+      defaults: { activo: 1 },
+    });
+    await sequelize.query(
+      'UPDATE sesiones_caja SET caja_id = ? WHERE sucursal_id = ? AND caja_id IS NULL',
+      { replacements: [cajaPrincipal.id, s.id] }
+    );
+  }
 
   const productosConStock = await Producto.findAll({ where: { stock: { [require('sequelize').Op.ne]: null } } });
   for (const p of productosConStock) {
