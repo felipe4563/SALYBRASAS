@@ -26,6 +26,28 @@ async function eliminarCategoria(req, res, next) {
   catch (err) { next(err); }
 }
 
+async function listarGruposOpciones(req, res, next) {
+  try { res.json({ ok: true, datos: await svc.listarGruposOpciones() }); }
+  catch (err) { next(err); }
+}
+
+async function crearGrupoOpciones(req, res, next) {
+  try {
+    if (!req.body.nombre) return res.status(400).json({ ok: false, mensaje: 'nombre es requerido' });
+    res.status(201).json({ ok: true, datos: await svc.crearGrupoOpciones(req.body) });
+  } catch (err) { next(err); }
+}
+
+async function actualizarGrupoOpciones(req, res, next) {
+  try { res.json({ ok: true, datos: await svc.actualizarGrupoOpciones(req.params.id, req.body) }); }
+  catch (err) { next(err); }
+}
+
+async function eliminarGrupoOpciones(req, res, next) {
+  try { await svc.eliminarGrupoOpciones(req.params.id); res.json({ ok: true, datos: null }); }
+  catch (err) { next(err); }
+}
+
 async function listarProductos(req, res, next) {
   try { res.json({ ok: true, datos: await svc.listarProductos(req.query, _alcance(req)) }); }
   catch (err) { next(err); }
@@ -56,4 +78,4 @@ async function eliminarProducto(req, res, next) {
   catch (err) { next(err); }
 }
 
-module.exports = { listarCategorias, crearCategoria, actualizarCategoria, eliminarCategoria, listarProductos, obtenerProducto, crearProducto, actualizarProducto, eliminarProducto };
+module.exports = { listarCategorias, crearCategoria, actualizarCategoria, eliminarCategoria, listarGruposOpciones, crearGrupoOpciones, actualizarGrupoOpciones, eliminarGrupoOpciones, listarProductos, obtenerProducto, crearProducto, actualizarProducto, eliminarProducto };

@@ -1,4 +1,4 @@
-const { Categoria, Producto, Sucursal } = require('../../models');
+const { Categoria, Producto, Sucursal, GrupoOpciones, Opcion } = require('../../models');
 const sequelize = require('../../config/database');
 const { ajustarStockSucursal, mezclarStockPorSucursal } = require('../inventario/stock.service');
 
@@ -25,6 +25,59 @@ async function eliminarCategoria(id) {
   const productos = await Producto.count({ where: { categoria_id: id } });
   if (productos > 0) throw Object.assign(new Error('La categoría tiene productos asignados'), { status: 409 });
   await cat.destroy();
+}
+
+// --- Grupos de opciones ---
+
+async function listarGruposOpciones() {
+  return GrupoOpciones.findAll({
+    include: [{ model: Opcion, as: 'opciones', attributes: ['id', 'nombre', 'orden'] }],
+    order: [['nombre', 'ASC'], [{ model: Opcion, as: 'opciones' }, 'orden', 'ASC']],
+  });
+}
+
+async function _conOpciones(id, transaction) {
+  return GrupoOpciones.findByPk(id, {
+    include: [{ model: Opcion, as: 'opciones', attributes: ['id', 'nombre', 'orden'] }],
+    order: [[{ model: Opcion, as: 'opciones' }, 'orden', 'ASC']],
+    transaction,
+  });
+}
+
+async function crearGrupoOpciones({ nombre, opciones = [] }) {
+  return sequelize.transaction(async (t) => {
+    const grupo = await GrupoOpciones.create({ nombre }, { transaction: t });
+    if (opciones.length) {
+      await Opcion.bulkCreate(
+        opciones.map((o, i) => ({ grupo_opciones_id: grupo.id, nombre: o.nombre, orden: o.orden ?? i })),
+        { transaction: t }
+      );
+    }
+    return _conOpciones(grupo.id, t);
+  });
+}
+
+async function actualizarGrupoOpciones(id, { nombre, opciones = [] }) {
+  return sequelize.transaction(async (t) => {
+    const grupo = await GrupoOpciones.findByPk(id, { transaction: t });
+    if (!grupo) throw Object.assign(new Error('Grupo de opciones no encontrado'), { status: 404 });
+    await grupo.update({ nombre }, { transaction: t });
+    await Opcion.destroy({ where: { grupo_opciones_id: id }, transaction: t });
+    if (opciones.length) {
+      await Opcion.bulkCreate(
+        opciones.map((o, i) => ({ grupo_opciones_id: id, nombre: o.nombre, orden: o.orden ?? i })),
+        { transaction: t }
+      );
+    }
+    return _conOpciones(id, t);
+  });
+}
+
+async function eliminarGrupoOpciones(id) {
+  const grupo = await GrupoOpciones.findByPk(id);
+  if (!grupo) throw Object.assign(new Error('Grupo de opciones no encontrado'), { status: 404 });
+  await Producto.update({ grupo_opciones_id: null }, { where: { grupo_opciones_id: id } });
+  await grupo.destroy();
 }
 
 // --- Productos ---
@@ -102,4 +155,4 @@ async function eliminarProducto(id) {
   await p.update({ activo: 0 });
 }
 
-module.exports = { listarCategorias, crearCategoria, actualizarCategoria, eliminarCategoria, listarProductos, obtenerProducto, crearProducto, actualizarProducto, eliminarProducto };
+module.exports = { listarCategorias, crearCategoria, actualizarCategoria, eliminarCategoria, listarGruposOpciones, crearGrupoOpciones, actualizarGrupoOpciones, eliminarGrupoOpciones, listarProductos, obtenerProducto, crearProducto, actualizarProducto, eliminarProducto };
