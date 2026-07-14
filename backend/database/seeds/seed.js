@@ -46,6 +46,10 @@ const PERMISOS = [
   { modulo: 'sucursales', accion: 'crear', descripcion: 'Crear sucursales' },
   { modulo: 'sucursales', accion: 'editar', descripcion: 'Editar sucursales' },
   { modulo: 'sucursales', accion: 'eliminar', descripcion: 'Eliminar sucursales' },
+  { modulo: 'cajas', accion: 'ver', descripcion: 'Ver cajas' },
+  { modulo: 'cajas', accion: 'crear', descripcion: 'Crear cajas' },
+  { modulo: 'cajas', accion: 'editar', descripcion: 'Editar cajas' },
+  { modulo: 'cajas', accion: 'eliminar', descripcion: 'Eliminar cajas' },
 ];
 
 async function seed() {
