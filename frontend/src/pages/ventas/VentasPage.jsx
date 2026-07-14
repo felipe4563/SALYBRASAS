@@ -6,7 +6,7 @@ import {
   Plus, Minus, Trash2, CreditCard, Wallet, ChevronRight, LayoutGrid,
 } from 'lucide-react';
 import { getMesas } from '../../api/mesas';
-import { getVentas, crearVentaCompleta } from '../../api/ventas';
+import { getVentas, crearVentaCompleta, cobrarVenta } from '../../api/ventas';
 import { getEstadoCajas } from '../../api/caja';
 import { getProductos } from '../../api/productos';
 import { getCategorias } from '../../api/categorias';
@@ -16,6 +16,7 @@ import { useAuth } from '../../hooks/useAuth';
 import ModalLlevar from './components/ModalLlevar';
 import ModalMesas from './components/ModalMesas';
 import CategoriasBar from './components/CategoriasBar';
+import ModalPagoQr from './components/ModalPagoQr';
 import Modal from '../../components/ui/Modal';
 import socket from '../../socket';
 
@@ -420,8 +421,9 @@ export default function VentasPage() {
 function ModalCobrar({ total, carrito, tipo, mesaId, nombreCliente, sesionCajaId, onClose, onExito }) {
   const [metodo, setMetodo] = useState('efectivo');
   const [error, setError] = useState(null);
+  const [pagoQrEstado, setPagoQrEstado] = useState(null); // { pedidoId, pagoQr } | null
 
-  const cobrar = useMutation({
+  const iniciar = useMutation({
     mutationFn: () => crearVentaCompleta({
       tipo,
       mesa_id: tipo === 'mesa' ? mesaId : undefined,
@@ -431,9 +433,33 @@ function ModalCobrar({ total, carrito, tipo, mesaId, nombreCliente, sesionCajaId
       monto_recibido: total,
       sesion_caja_id: sesionCajaId,
     }),
-    onSuccess: () => onExito(),
+    onSuccess: (resultado) => {
+      if (resultado.pago_qr) {
+        setPagoQrEstado({ pedidoId: resultado.pedido.id, pagoQr: resultado.pago_qr });
+      } else {
+        onExito();
+      }
+    },
     onError: (err) => setError(err?.response?.data?.mensaje ?? 'Error al cobrar'),
   });
+
+  const reintentar = useMutation({
+    mutationFn: () => cobrarVenta(pagoQrEstado.pedidoId, { metodo_pago: 'qr', monto_recibido: total }),
+    onSuccess: (resultado) => setPagoQrEstado({ pedidoId: resultado.pedido.id, pagoQr: resultado.pago_qr }),
+    onError: (err) => setError(err?.response?.data?.mensaje ?? 'Error al generar el QR'),
+  });
+
+  if (pagoQrEstado) {
+    return (
+      <ModalPagoQr
+        pedidoId={pagoQrEstado.pedidoId}
+        pagoQr={pagoQrEstado.pagoQr}
+        onClose={onClose}
+        onCompletado={() => onExito()}
+        onReintentar={() => reintentar.mutate()}
+      />
+    );
+  }
 
   return (
     <Modal titulo="Cobrar orden" onClose={onClose} ancho="max-w-sm">
@@ -467,11 +493,11 @@ function ModalCobrar({ total, carrito, tipo, mesaId, nombreCliente, sesionCajaId
             Cancelar
           </button>
           <button
-            onClick={() => cobrar.mutate()}
-            disabled={cobrar.isPending}
+            onClick={() => iniciar.mutate()}
+            disabled={iniciar.isPending}
             className="px-5 py-2 rounded-xl text-sm bg-blue-600 hover:bg-blue-700 text-white font-semibold transition-colors disabled:opacity-60"
           >
-            {cobrar.isPending ? 'Procesando...' : 'Confirmar cobro'}
+            {iniciar.isPending ? 'Procesando...' : 'Confirmar cobro'}
           </button>
         </div>
       </div>

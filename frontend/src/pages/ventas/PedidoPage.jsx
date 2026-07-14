@@ -12,6 +12,7 @@ import { getConfiguracion, BASE_URL } from '../../api/configuracion';
 import { useAuth } from '../../hooks/useAuth';
 import { usePermisos } from '../../hooks/usePermisos';
 import Modal from '../../components/ui/Modal';
+import ModalPagoQr from './components/ModalPagoQr';
 import { imprimirTicketVenta }  from '../../utils/ticketVenta';
 
 const API_BASE = BASE_URL;
@@ -541,14 +542,31 @@ export default function PedidoPage() {
 function ModalCobrar({ total, pedidoId, pedido, config, onClose, onExito }) {
   const [metodo, setMetodo] = useState('efectivo');
   const [error, setError] = useState(null);
+  const [pagoQr, setPagoQr] = useState(null);
 
   const cobrar = useMutation({
     mutationFn: () => cobrarVenta(pedidoId, { metodo_pago: metodo, monto_recibido: total }),
-    onSuccess: () => {
-      onExito();
+    onSuccess: (resultado) => {
+      if (resultado.pago_qr) {
+        setPagoQr(resultado.pago_qr);
+      } else {
+        onExito();
+      }
     },
     onError: (err) => setError(err?.response?.data?.mensaje ?? 'Error al cobrar'),
   });
+
+  if (pagoQr) {
+    return (
+      <ModalPagoQr
+        pedidoId={pedidoId}
+        pagoQr={pagoQr}
+        onClose={onClose}
+        onCompletado={() => onExito()}
+        onReintentar={() => cobrar.mutate()}
+      />
+    );
+  }
 
   return (
     <Modal titulo="Cobrar orden" onClose={onClose} ancho="max-w-sm">
