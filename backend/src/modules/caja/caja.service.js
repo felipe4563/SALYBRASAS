@@ -68,6 +68,7 @@ async function registrarGasto(sesion_id, usuario_id, { descripcion, monto }, alc
   if (!sesion) throw Object.assign(new Error('Sesión no encontrada'), { status: 404 });
   _verificarAlcance(sesion, alcance);
   if (sesion.estado !== 'abierta') throw Object.assign(new Error('La sesión ya está cerrada'), { status: 409 });
+  if (sesion.usuario_id !== usuario_id) throw Object.assign(new Error('Solo el cajero que abrió puede registrar gastos en esta sesión'), { status: 403 });
 
   const gasto = await Gasto.create({ sesion_caja_id: sesion_id, usuario_id, descripcion, monto });
 

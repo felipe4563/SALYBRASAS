@@ -217,12 +217,19 @@ export default function CajaPage() {
             <span className="font-semibold text-sm text-gray-700 dark:text-gray-200 flex items-center gap-2">
               <ReceiptText className="w-4 h-4" /> Gastos del turno
             </span>
-            <button
-              onClick={() => setModalGasto(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg text-xs font-medium text-gray-600 dark:text-gray-300 transition-colors"
-            >
-              <Plus className="w-3.5 h-3.5" /> Registrar gasto
-            </button>
+            {usuario?.id === sesion.usuario?.id ? (
+              <button
+                onClick={() => setModalGasto(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg text-xs font-medium text-gray-600 dark:text-gray-300 transition-colors"
+              >
+                <Plus className="w-3.5 h-3.5" /> Registrar gasto
+              </button>
+            ) : (
+              <div className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg text-xs text-amber-700 dark:text-amber-400">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                Solo <span className="font-semibold mx-1">{sesion.usuario?.nombre}</span> puede registrar gastos aquí
+              </div>
+            )}
           </div>
           {gastos.length === 0 ? (
             <div className="flex items-center justify-center h-20 text-sm text-gray-400 dark:text-gray-600">

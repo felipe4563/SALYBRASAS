@@ -86,6 +86,26 @@ describe('Caja — apertura por caja física', () => {
     await Usuario.destroy({ where: { id: otroUsuario.id } });
   });
 
+  it('otro usuario de la misma sucursal no puede registrar gastos en una sesión que no abrió (403)', async () => {
+    const rol = await Rol.findOne({ where: { nombre: 'Cajero' } });
+    const hash = await bcrypt.hash('clave123', 10);
+    const otroUsuario = await Usuario.create({ rol_id: rol.id, nombre: 'Caja Fisica Gasto Otro Test', email: 'caja-fisica-gasto-otro-test@restaurante.com', contrasena: hash });
+    await otroUsuario.addSucursal(sucursalPropia);
+    const loginOtro = await request(app).post('/api/v1/auth/login').send({ email: 'caja-fisica-gasto-otro-test@restaurante.com', contrasena: 'clave123' });
+
+    const sesionPropia = await SesionCaja.findOne({ where: { caja_id: cajaPropia.id, estado: 'abierta' } });
+
+    try {
+      const res = await request(app)
+        .post(`/api/v1/caja/${sesionPropia.id}/gastos`)
+        .set('Authorization', `Bearer ${loginOtro.body.datos.token}`)
+        .send({ descripcion: 'Gasto no autorizado', monto: 10 });
+      expect(res.status).toBe(403);
+    } finally {
+      await Usuario.destroy({ where: { id: otroUsuario.id } });
+    }
+  });
+
   it('GET /caja/estado devuelve la caja con su sesión abierta', async () => {
     const res = await request(app)
       .get('/api/v1/caja/estado')
