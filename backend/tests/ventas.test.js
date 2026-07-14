@@ -260,6 +260,35 @@ describe('Ventas — cobro con QR (CodePay)', () => {
     expect(entradasLibro).toBe(1);
   });
 
+  it('dos confirmaciones concurrentes del mismo pago solo finalizan la venta una vez', async () => {
+    codepayClientMock.generarQr.mockResolvedValue({
+      qr_code: 'data:image/png;base64,abc', tx_id: 'tx_qr_race', amount: 5.35, net_amount: 5, commission_amount: 0.35,
+    });
+
+    const creado = await request(app)
+      .post('/api/v1/ventas/completa')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        tipo: 'llevar', metodo_pago: 'qr', sesion_caja_id: sesionId,
+        items: [{ producto_id: productoId, cantidad: 1 }],
+      });
+    const pedidoId = creado.body.datos.pedido.id;
+
+    codepayClientMock.consultarEstado.mockResolvedValue({ status: 'completed', tx_id: 'tx_qr_race', order_id: `pedido_${pedidoId}_1` });
+
+    const [res1, res2] = await Promise.all([
+      request(app).get(`/api/v1/ventas/${pedidoId}/pago-qr/estado`).set('Authorization', `Bearer ${token}`),
+      request(app).get(`/api/v1/ventas/${pedidoId}/pago-qr/estado`).set('Authorization', `Bearer ${token}`),
+    ]);
+
+    expect(res1.status).toBe(200);
+    expect(res2.status).toBe(200);
+    expect([res1.body.datos.estado, res2.body.datos.estado]).toContain('completado');
+
+    const entradasLibro = await LibroCaja.count({ where: { referencia_id: pedidoId } });
+    expect(entradasLibro).toBe(1); // no se duplicó pese a las dos confirmaciones simultáneas
+  });
+
   it('confirmación fallida por polling: el pedido vuelve a pendiente y puede reintentarse', async () => {
     codepayClientMock.generarQr.mockResolvedValue({
       qr_code: 'data:image/png;base64,abc', tx_id: 'tx_qr_3', amount: 10.35, net_amount: 10, commission_amount: 0.35,

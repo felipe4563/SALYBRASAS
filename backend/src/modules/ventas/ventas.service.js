@@ -193,28 +193,36 @@ async function iniciarPagoQr(pedido, { descuento = 0, propina = 0 } = {}) {
   };
 }
 
-async function _revertirPagoQr(pagoQr, nuevoEstado) {
+async function _revertirPagoQr(pagoQrInicial, nuevoEstado) {
   await sequelize.transaction(async (t) => {
+    const pagoQr = await PagoQr.findByPk(pagoQrInicial.id, { transaction: t, lock: t.LOCK.UPDATE });
+    if (!pagoQr || pagoQr.estado !== 'pendiente') return; // ya resuelto por otra llamada concurrente
     await pagoQr.update({ estado: nuevoEstado }, { transaction: t });
     await Pedido.update({ estado: pagoQr.estado_previo }, { where: { id: pagoQr.pedido_id }, transaction: t });
   });
 }
 
-async function _confirmarPagoQr(pagoQr) {
-  const pedido = await Pedido.findByPk(pagoQr.pedido_id, { include: INCLUDE_PEDIDO_COMPLETO });
-  const detalles = pedido.detalles.map((d) => ({ producto_id: d.producto_id, cantidad: d.cantidad }));
+async function _confirmarPagoQr(pagoQrInicial) {
+  const pedidoId = await sequelize.transaction(async (t) => {
+    const pagoQr = await PagoQr.findByPk(pagoQrInicial.id, { transaction: t, lock: t.LOCK.UPDATE });
+    if (!pagoQr || pagoQr.estado !== 'pendiente') return null; // ya resuelto por otra llamada concurrente
 
-  await sequelize.transaction(async (t) => {
+    const pedido = await Pedido.findByPk(pagoQr.pedido_id, { include: INCLUDE_PEDIDO_COMPLETO, transaction: t });
+    const detalles = pedido.detalles.map((d) => ({ producto_id: d.producto_id, cantidad: d.cantidad }));
+
     await _finalizarVenta({
       pedido, detalles, metodo_pago: 'qr', monto_recibido: pagoQr.monto_neto,
       descuento: pedido.descuento, propina: pedido.propina, usuario_id: pedido.usuario_id,
     }, t);
     await pagoQr.update({ estado: 'completado' }, { transaction: t });
+    return pedido.id;
   });
 
-  const completado = await obtener(pedido.id);
-  emitir('restaurante:actualizar', { tipo: 'pedido_cobrado' }, pedido.sucursal_id);
-  await _emitirImpresion(completado, 'qr', 0, pedido.sucursal_id);
+  if (!pedidoId) return null;
+
+  const completado = await obtener(pedidoId);
+  emitir('restaurante:actualizar', { tipo: 'pedido_cobrado' }, completado.sucursal_id);
+  await _emitirImpresion(completado, 'qr', 0, completado.sucursal_id);
   return completado;
 }
 
