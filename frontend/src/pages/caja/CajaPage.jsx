@@ -1,19 +1,18 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useMutation } from '@tanstack/react-query';
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import socket from '../../socket';
 import {
   Wallet, Plus, X, AlertCircle, RefreshCw, CheckCircle2,
   TrendingUp, TrendingDown, DollarSign, ReceiptText, Clock,
-  History, Eye, Loader2, User,
+  History, Eye, Loader2, User, Landmark,
 } from 'lucide-react';
 import {
-  getCajaActiva, getSesiones, abrirCaja, cerrarCaja,
+  getEstadoCajas, getSesiones, getSesion, abrirCaja, cerrarCaja,
   getReporte, registrarGasto, getGastos,
 } from '../../api/caja';
+import { getSucursales } from '../../api/sucursales';
 import { imprimirTicketCierreCaja } from '../../utils/ticketCierreCaja';
 import { getConfiguracion } from '../../api/configuracion';
-import { getSucursales } from '../../api/sucursales';
 import { usePermisos } from '../../hooks/usePermisos';
 import { useAuth } from '../../hooks/useAuth';
 import Modal from '../../components/ui/Modal';
@@ -53,8 +52,18 @@ export default function CajaPage() {
   const { usuario } = useAuth();
   const qc = useQueryClient();
 
+  const puedeVer    = tienePermiso('caja', 'ver');
+  const puedeAbrir  = tienePermiso('caja', 'abrir');
+  const puedeCerrar = tienePermiso('caja', 'cerrar');
+
   const accesoTodas = usuario?.sucursal_activa?.id == null;
   const [sucursalId, setSucursalId] = useState('');
+  const [sesionSeleccionadaId, setSesionSeleccionadaId] = useState(null);
+  const [modalAbrir, setModalAbrir] = useState(null); // null | caja-object
+  const [modalCerrar, setModalCerrar] = useState(false);
+  const [modalGasto, setModalGasto] = useState(false);
+  const [reporteFinal, setReporteFinal] = useState(null);
+  const [cargandoDet, setCargandoDet] = useState(null);
 
   const { data: sucursales = [] } = useQuery({
     queryKey: ['sucursales'],
@@ -62,27 +71,24 @@ export default function CajaPage() {
     enabled: accesoTodas,
   });
 
-  const puedeVer    = tienePermiso('caja', 'ver');
-  const puedeAbrir  = tienePermiso('caja', 'abrir');
-  const puedeCerrar = tienePermiso('caja', 'cerrar');
+  const sucursalActivaId = accesoTodas ? sucursalId : usuario?.sucursal_activa?.id;
 
-  const [modalAbrir,    setModalAbrir]    = useState(false);
-  const [modalCerrar,   setModalCerrar]   = useState(false);
-  const [modalGasto,    setModalGasto]    = useState(false);
-  const [reporteFinal,  setReporteFinal]  = useState(null);
-  const [cargandoDet,   setCargandoDet]   = useState(null);
-  const [ultimaActualizacion, setUltimaActualizacion] = useState(null);
-
-  const { data: sesion, isLoading } = useQuery({
-    queryKey: ['caja-activa', accesoTodas ? sucursalId : null],
-    queryFn: () => getCajaActiva(accesoTodas ? sucursalId : undefined),
-    enabled: puedeVer && (!accesoTodas || !!sucursalId),
+  const { data: cajas = [], isLoading } = useQuery({
+    queryKey: ['caja-estado', sucursalActivaId],
+    queryFn: () => getEstadoCajas(sucursalActivaId),
+    enabled: puedeVer && !!sucursalActivaId,
   });
 
   const { data: config = {} } = useQuery({
     queryKey: ['configuracion'],
     queryFn: getConfiguracion,
     enabled: puedeVer,
+  });
+
+  const { data: sesion } = useQuery({
+    queryKey: ['caja-sesion', sesionSeleccionadaId],
+    queryFn: () => getSesion(sesionSeleccionadaId),
+    enabled: !!sesionSeleccionadaId,
   });
 
   const { data: gastos = [] } = useQuery({
@@ -110,11 +116,13 @@ export default function CajaPage() {
   };
 
   const invalidar = useCallback(() => {
-    qc.invalidateQueries({ queryKey: ['caja-activa'] });
+    qc.invalidateQueries({ queryKey: ['caja-estado'] });
     qc.invalidateQueries({ queryKey: ['caja-sesiones'] });
-    if (sesion?.id) qc.invalidateQueries({ queryKey: ['caja-gastos', sesion.id] });
-    setUltimaActualizacion(new Date());
-  }, [qc, sesion?.id]);
+    if (sesionSeleccionadaId) {
+      qc.invalidateQueries({ queryKey: ['caja-sesion', sesionSeleccionadaId] });
+      qc.invalidateQueries({ queryKey: ['caja-gastos', sesionSeleccionadaId] });
+    }
+  }, [qc, sesionSeleccionadaId]);
 
   useEffect(() => {
     socket.on('restaurante:actualizar', invalidar);
@@ -130,20 +138,12 @@ export default function CajaPage() {
     );
   }
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-64 gap-3 text-gray-400">
-        <RefreshCw className="w-5 h-5 animate-spin" /><span>Cargando...</span>
-      </div>
-    );
-  }
-
   const selectorSucursal = accesoTodas && (
     <div className="flex items-center gap-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3">
       <label className="text-sm font-medium text-gray-600 dark:text-gray-300 shrink-0">Sucursal</label>
       <select
         value={sucursalId}
-        onChange={e => setSucursalId(e.target.value)}
+        onChange={e => { setSucursalId(e.target.value); setSesionSeleccionadaId(null); }}
         className="flex-1 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
       >
         <option value="">Elegí una sucursal...</option>
@@ -152,160 +152,167 @@ export default function CajaPage() {
     </div>
   );
 
-  if (accesoTodas && !sucursalId) {
+  // vista de detalle de una sesión (abierta) seleccionada de la grilla
+  if (sesionSeleccionadaId && sesion) {
     return (
       <div className="space-y-6 max-w-5xl">
-        <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">Caja</h1>
-        {selectorSucursal}
-        <div className="flex flex-col items-center justify-center py-16 gap-3 text-gray-400 dark:text-gray-600">
-          <Wallet className="w-10 h-10" />
-          <p className="text-sm">Elegí una sucursal para ver y operar su caja</p>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setSesionSeleccionadaId(null)}
+            className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+          >
+            ← Volver a las cajas
+          </button>
         </div>
+
+        <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl p-4 sm:p-5 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+            <div className="space-y-1">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded-full text-xs font-semibold">
+                <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
+                Caja Abierta
+              </span>
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                Abierta por{' '}
+                <span className="font-medium text-gray-700 dark:text-gray-200">{sesion.usuario?.nombre}</span>
+              </p>
+              <p className="text-xs text-gray-400 flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5" />
+                {fmtHora(sesion.abierto_en)} · {duracion(sesion.abierto_en)} en curso
+              </p>
+            </div>
+            {puedeCerrar && (
+              usuario?.id === sesion.usuario?.id ? (
+                <button
+                  onClick={() => setModalCerrar(true)}
+                  className="self-start sm:self-auto flex items-center gap-2 px-4 py-2 border border-red-200 dark:border-red-900 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl text-sm font-medium transition-colors"
+                >
+                  <X className="w-4 h-4" /> Cerrar Caja
+                </button>
+              ) : (
+                <div className="self-start sm:self-auto flex items-center gap-2 px-3 py-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl text-xs text-amber-700 dark:text-amber-400">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                  Solo <span className="font-semibold mx-1">{sesion.usuario?.nombre}</span> puede cerrar esta caja
+                </div>
+              )
+            )}
+          </div>
+
+          <div className="grid grid-cols-3 gap-2 sm:gap-3">
+            <MetricCard label="Apertura" valor={parseFloat(sesion.monto_apertura)} icono={<DollarSign className="w-4 h-4" />} color="blue" />
+            <MetricCard label="Ventas"   valor={parseFloat(sesion.total_ventas)}   icono={<TrendingUp  className="w-4 h-4" />} color="green" />
+            <MetricCard label="Gastos"   valor={parseFloat(sesion.total_gastos)}   icono={<TrendingDown className="w-4 h-4" />} color="red" />
+          </div>
+
+          <div className="flex items-center justify-between bg-blue-50 dark:bg-blue-900/20 rounded-xl px-4 py-3">
+            <span className="text-sm font-medium text-blue-700 dark:text-blue-400">Efectivo esperado en caja</span>
+            <span className="text-base sm:text-lg font-bold text-blue-700 dark:text-blue-400">
+              Bs {(parseFloat(sesion.monto_apertura) + parseFloat(sesion.ventas_efectivo ?? 0) - parseFloat(sesion.total_gastos)).toFixed(2)}
+            </span>
+          </div>
+        </div>
+
+        <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl overflow-hidden">
+          <div className="flex items-center justify-between px-4 sm:px-5 py-3 border-b border-gray-100 dark:border-gray-700">
+            <span className="font-semibold text-sm text-gray-700 dark:text-gray-200 flex items-center gap-2">
+              <ReceiptText className="w-4 h-4" /> Gastos del turno
+            </span>
+            <button
+              onClick={() => setModalGasto(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg text-xs font-medium text-gray-600 dark:text-gray-300 transition-colors"
+            >
+              <Plus className="w-3.5 h-3.5" /> Registrar gasto
+            </button>
+          </div>
+          {gastos.length === 0 ? (
+            <div className="flex items-center justify-center h-20 text-sm text-gray-400 dark:text-gray-600">
+              Sin gastos registrados
+            </div>
+          ) : (
+            <div className="divide-y divide-gray-100 dark:divide-gray-700">
+              {gastos.map(g => (
+                <div key={g.id} className="flex items-center justify-between px-4 sm:px-5 py-3">
+                  <div className="min-w-0 mr-3">
+                    <p className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate">{g.descripcion}</p>
+                    <p className="text-xs text-gray-400">
+                      {fmtHora(g.creado_en)}
+                      {g.usuario?.nombre && <> · <span className="text-gray-500 dark:text-gray-400">{g.usuario.nombre}</span></>}
+                    </p>
+                  </div>
+                  <span className="shrink-0 text-sm font-semibold text-red-600 dark:text-red-400">
+                    -Bs {parseFloat(g.monto).toFixed(2)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {modalCerrar && (
+          <ModalCerrarCaja
+            sesion={sesion}
+            onClose={() => setModalCerrar(false)}
+            onExito={(reporte) => {
+              setModalCerrar(false);
+              invalidar();
+              setSesionSeleccionadaId(null);
+              setReporteFinal(reporte);
+            }}
+          />
+        )}
+
+        {modalGasto && (
+          <ModalGasto
+            sesionId={sesion.id}
+            onClose={() => setModalGasto(false)}
+            onExito={() => {
+              setModalGasto(false);
+              qc.invalidateQueries({ queryKey: ['caja-sesion', sesion.id] });
+              qc.invalidateQueries({ queryKey: ['caja-gastos', sesion.id] });
+            }}
+          />
+        )}
+
+        {reporteFinal && (
+          <ModalReporte reporte={reporteFinal} config={config} onClose={() => setReporteFinal(null)} />
+        )}
       </div>
     );
   }
 
   return (
     <div className="space-y-6 max-w-5xl">
-
-      {/* Cabecera */}
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">Caja</h1>
-        {!sesion && puedeAbrir && (
-          <button
-            onClick={() => setModalAbrir(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-semibold transition-colors"
-          >
-            <Plus className="w-4 h-4" /> Abrir Caja
-          </button>
-        )}
-      </div>
-
+      <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">Caja</h1>
       {selectorSucursal}
 
-      {/* Sin caja abierta */}
-      {!sesion && (
-        <div className="flex flex-col items-center justify-center py-16 gap-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl">
-          <div className="w-16 h-16 rounded-2xl bg-gray-100 dark:bg-gray-700 flex items-center justify-center">
-            <Wallet className="w-8 h-8 text-gray-400" />
-          </div>
-          <div className="text-center">
-            <p className="font-semibold text-gray-700 dark:text-gray-200">No hay caja abierta</p>
-            <p className="text-sm text-gray-400 mt-1">
-              {puedeAbrir ? 'Abre la caja para comenzar a registrar ventas.' : 'Espera a que un cajero abra la caja.'}
-            </p>
-          </div>
-          {puedeAbrir && (
-            <button
-              onClick={() => setModalAbrir(true)}
-              className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-semibold transition-colors"
-            >
-              <Plus className="w-4 h-4" /> Abrir Caja ahora
-            </button>
-          )}
+      {accesoTodas && !sucursalId ? (
+        <div className="flex flex-col items-center justify-center py-16 gap-3 text-gray-400 dark:text-gray-600">
+          <Wallet className="w-10 h-10" />
+          <p className="text-sm">Elegí una sucursal para ver sus cajas</p>
+        </div>
+      ) : isLoading ? (
+        <div className="flex items-center justify-center h-64 gap-3 text-gray-400">
+          <RefreshCw className="w-5 h-5 animate-spin" /><span>Cargando...</span>
+        </div>
+      ) : cajas.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16 gap-3 text-gray-400 dark:text-gray-600">
+          <Landmark className="w-10 h-10" />
+          <p className="text-sm">Esta sucursal todavía no tiene cajas creadas</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {cajas.map(c => (
+            <TarjetaCaja
+              key={c.id}
+              caja={c}
+              puedeAbrir={puedeAbrir}
+              onAbrir={() => setModalAbrir(c)}
+              onVerDetalle={() => setSesionSeleccionadaId(c.sesion_abierta.id)}
+            />
+          ))}
         </div>
       )}
 
-      {/* Caja activa */}
-      {sesion && (
-        <>
-          <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl p-4 sm:p-5 space-y-4">
-            {/* Estado + acciones */}
-            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-              <div className="space-y-1">
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded-full text-xs font-semibold">
-                  <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
-                  Caja Abierta
-                </span>
-                <p className="text-sm text-gray-500 dark:text-gray-400">
-                  Abierta por{' '}
-                  <span className="font-medium text-gray-700 dark:text-gray-200">{sesion.usuario?.nombre}</span>
-                </p>
-                <p className="text-xs text-gray-400 flex items-center gap-1.5">
-                  <Clock className="w-3.5 h-3.5" />
-                  {fmtHora(sesion.abierto_en)} · {duracion(sesion.abierto_en)} en curso
-                </p>
-              </div>
-              {puedeCerrar && (
-                usuario?.id === sesion.usuario?.id ? (
-                  <button
-                    onClick={() => setModalCerrar(true)}
-                    className="self-start sm:self-auto flex items-center gap-2 px-4 py-2 border border-red-200 dark:border-red-900 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl text-sm font-medium transition-colors"
-                  >
-                    <X className="w-4 h-4" /> Cerrar Caja
-                  </button>
-                ) : (
-                  <div className="self-start sm:self-auto flex items-center gap-2 px-3 py-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl text-xs text-amber-700 dark:text-amber-400">
-                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                    Solo <span className="font-semibold mx-1">{sesion.usuario?.nombre}</span> puede cerrar esta caja
-                  </div>
-                )
-              )}
-            </div>
-
-            {/* Métricas */}
-            <div className="grid grid-cols-3 gap-2 sm:gap-3">
-              <MetricCard label="Apertura" valor={parseFloat(sesion.monto_apertura)} icono={<DollarSign className="w-4 h-4" />} color="blue" />
-              <MetricCard label="Ventas"   valor={parseFloat(sesion.total_ventas)}   icono={<TrendingUp  className="w-4 h-4" />} color="green" />
-              <MetricCard label="Gastos"   valor={parseFloat(sesion.total_gastos)}   icono={<TrendingDown className="w-4 h-4" />} color="red" />
-            </div>
-
-            {/* Balance */}
-            <div className="flex items-center justify-between bg-blue-50 dark:bg-blue-900/20 rounded-xl px-4 py-3">
-              <div>
-                <span className="text-sm font-medium text-blue-700 dark:text-blue-400">Efectivo esperado en caja</span>
-                {ultimaActualizacion && (
-                  <p className="text-xs text-blue-400 dark:text-blue-500 mt-0.5">
-                    Actualizado {new Date(ultimaActualizacion).toLocaleTimeString('es-BO', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                  </p>
-                )}
-              </div>
-              <span className="text-base sm:text-lg font-bold text-blue-700 dark:text-blue-400">
-                Bs {(parseFloat(sesion.monto_apertura) + parseFloat(sesion.ventas_efectivo ?? 0) - parseFloat(sesion.total_gastos)).toFixed(2)}
-              </span>
-            </div>
-          </div>
-
-          {/* Gastos del turno */}
-          <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl overflow-hidden">
-            <div className="flex items-center justify-between px-4 sm:px-5 py-3 border-b border-gray-100 dark:border-gray-700">
-              <span className="font-semibold text-sm text-gray-700 dark:text-gray-200 flex items-center gap-2">
-                <ReceiptText className="w-4 h-4" /> Gastos del turno
-              </span>
-              <button
-                onClick={() => setModalGasto(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg text-xs font-medium text-gray-600 dark:text-gray-300 transition-colors"
-              >
-                <Plus className="w-3.5 h-3.5" /> Registrar gasto
-              </button>
-            </div>
-            {gastos.length === 0 ? (
-              <div className="flex items-center justify-center h-20 text-sm text-gray-400 dark:text-gray-600">
-                Sin gastos registrados
-              </div>
-            ) : (
-              <div className="divide-y divide-gray-100 dark:divide-gray-700">
-                {gastos.map(g => (
-                  <div key={g.id} className="flex items-center justify-between px-4 sm:px-5 py-3">
-                    <div className="min-w-0 mr-3">
-                      <p className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate">{g.descripcion}</p>
-                      <p className="text-xs text-gray-400">
-                        {fmtHora(g.creado_en)}
-                        {g.usuario?.nombre && <> · <span className="text-gray-500 dark:text-gray-400">{g.usuario.nombre}</span></>}
-                      </p>
-                    </div>
-                    <span className="shrink-0 text-sm font-semibold text-red-600 dark:text-red-400">
-                      -Bs {parseFloat(g.monto).toFixed(2)}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </>
-      )}
-
-      {/* Historial de cierres */}
       {historial.length > 0 && (
         <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl overflow-hidden">
           <div className="px-4 sm:px-5 py-3 border-b border-gray-100 dark:border-gray-700">
@@ -317,7 +324,6 @@ export default function CajaPage() {
             </h2>
           </div>
 
-          {/* Mobile: cards */}
           <div className="divide-y divide-gray-100 dark:divide-gray-700 sm:hidden">
             {historial.map(s => {
               const dif = parseFloat(s.diferencia ?? 0);
@@ -363,7 +369,6 @@ export default function CajaPage() {
             })}
           </div>
 
-          {/* sm+: tabla */}
           <div className="hidden sm:block overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -426,45 +431,74 @@ export default function CajaPage() {
         </div>
       )}
 
-      {/* Modales */}
       {modalAbrir && (
         <ModalAbrirCaja
-          sucursalId={accesoTodas ? sucursalId : undefined}
-          onClose={() => setModalAbrir(false)}
-          onExito={() => { setModalAbrir(false); invalidar(); }}
-        />
-      )}
-
-      {modalCerrar && sesion && (
-        <ModalCerrarCaja
-          sesion={sesion}
-          onClose={() => setModalCerrar(false)}
-          onExito={(reporte) => {
-            setModalCerrar(false);
+          caja={modalAbrir}
+          onClose={() => setModalAbrir(null)}
+          onExito={(sesionCreada) => {
+            setModalAbrir(null);
             invalidar();
-            setReporteFinal(reporte);
-          }}
-        />
-      )}
-
-      {modalGasto && sesion && (
-        <ModalGasto
-          sesionId={sesion.id}
-          onClose={() => setModalGasto(false)}
-          onExito={() => {
-            setModalGasto(false);
-            qc.invalidateQueries({ queryKey: ['caja-activa'] });
-            qc.invalidateQueries({ queryKey: ['caja-gastos', sesion.id] });
+            setSesionSeleccionadaId(sesionCreada.id);
           }}
         />
       )}
 
       {reporteFinal && (
-        <ModalReporte
-          reporte={reporteFinal}
-          config={config}
-          onClose={() => setReporteFinal(null)}
-        />
+        <ModalReporte reporte={reporteFinal} config={config} onClose={() => setReporteFinal(null)} />
+      )}
+    </div>
+  );
+}
+
+/* ─── Tarjeta de caja (grilla) ──────────────────────────────────────────── */
+
+function TarjetaCaja({ caja, puedeAbrir, onAbrir, onVerDetalle }) {
+  const abierta = !!caja.sesion_abierta;
+  return (
+    <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl p-4 sm:p-5 flex flex-col gap-3">
+      <div className="flex items-center gap-2.5">
+        <div className="w-9 h-9 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center shrink-0">
+          <Wallet className="w-4.5 h-4.5 text-blue-600 dark:text-blue-400" />
+        </div>
+        <span className="font-semibold text-gray-800 dark:text-gray-100">{caja.nombre}</span>
+      </div>
+
+      {abierta ? (
+        <>
+          <div className="space-y-1">
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded-full text-xs font-semibold">
+              <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
+              Abierta
+            </span>
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              Por <span className="font-medium text-gray-700 dark:text-gray-200">{caja.sesion_abierta.usuario?.nombre}</span>
+            </p>
+            <p className="text-xs text-gray-400 flex items-center gap-1.5">
+              <Clock className="w-3.5 h-3.5" />
+              {duracion(caja.sesion_abierta.abierto_en)} en curso
+            </p>
+          </div>
+          <button
+            onClick={onVerDetalle}
+            className="flex items-center justify-center gap-2 py-2 rounded-xl border border-gray-200 dark:border-gray-600 text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+          >
+            <Eye className="w-4 h-4" /> Ver detalle
+          </button>
+        </>
+      ) : (
+        <>
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 rounded-full text-xs font-semibold w-fit">
+            Disponible
+          </span>
+          {puedeAbrir && (
+            <button
+              onClick={onAbrir}
+              className="flex items-center justify-center gap-2 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold transition-colors"
+            >
+              <Plus className="w-4 h-4" /> Abrir
+            </button>
+          )}
+        </>
       )}
     </div>
   );
@@ -491,18 +525,18 @@ function MetricCard({ label, valor, icono, color }) {
 
 /* ─── Modal Abrir Caja ──────────────────────────────────────────────────── */
 
-function ModalAbrirCaja({ sucursalId, onClose, onExito }) {
+function ModalAbrirCaja({ caja, onClose, onExito }) {
   const [monto, setMonto] = useState('');
   const [error, setError] = useState(null);
 
   const abrir = useMutation({
-    mutationFn: () => abrirCaja(parseFloat(monto) || 0, sucursalId),
+    mutationFn: () => abrirCaja(caja.id, parseFloat(monto) || 0),
     onSuccess: onExito,
     onError: (err) => setError(err?.response?.data?.mensaje ?? 'Error al abrir la caja'),
   });
 
   return (
-    <Modal titulo="Abrir Caja" onClose={onClose} ancho="max-w-sm">
+    <Modal titulo={`Abrir ${caja.nombre}`} onClose={onClose} ancho="max-w-sm">
       <div className="space-y-5">
         <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-4 text-sm text-blue-700 dark:text-blue-300">
           Ingresa el monto en efectivo con el que abres la caja (fondo inicial).
@@ -577,7 +611,6 @@ function ModalCerrarCaja({ sesion, onClose, onExito }) {
     <Modal titulo="Cerrar Caja — Arqueo" onClose={onClose} ancho="max-w-2xl">
       <div className="space-y-4">
 
-        {/* Resumen */}
         <div className="grid grid-cols-1 xs:grid-cols-3 sm:grid-cols-3 gap-2">
           <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-3 text-center">
             <p className="text-xs text-blue-600 dark:text-blue-400 font-medium mb-1">Apertura</p>
@@ -596,7 +629,6 @@ function ModalCerrarCaja({ sesion, onClose, onExito }) {
           </div>
         </div>
 
-        {/* Denominaciones */}
         <div>
           <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">
             Conteo de efectivo en caja
@@ -627,7 +659,6 @@ function ModalCerrarCaja({ sesion, onClose, onExito }) {
           </div>
         </div>
 
-        {/* Totales */}
         <div className="border-t border-gray-200 dark:border-gray-700 pt-4 space-y-2">
           {ventasQR > 0 && (
             <div className="flex justify-between text-sm text-purple-600 dark:text-purple-400">
@@ -750,7 +781,6 @@ function ModalReporte({ reporte, config = {}, onClose }) {
   return (
     <Modal titulo="Reporte de Cierre de Caja" onClose={onClose} ancho="max-w-lg">
       <div className="space-y-4">
-        {/* Éxito */}
         <div className="flex flex-col items-center gap-2 py-2">
           <CheckCircle2 className="w-12 h-12 text-green-500" />
           <p className="font-bold text-gray-800 dark:text-gray-100">Caja cerrada</p>
@@ -761,7 +791,6 @@ function ModalReporte({ reporte, config = {}, onClose }) {
           </p>
         </div>
 
-        {/* Ventas */}
         <div className="bg-gray-50 dark:bg-gray-700/50 rounded-xl p-4 space-y-2">
           <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">Resumen de ventas</p>
           <div className="flex justify-between text-sm text-gray-600 dark:text-gray-300">
@@ -792,7 +821,6 @@ function ModalReporte({ reporte, config = {}, onClose }) {
           </div>
         </div>
 
-        {/* Arqueo */}
         <div className="bg-gray-50 dark:bg-gray-700/50 rounded-xl p-4 space-y-2">
           <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">Arqueo de caja</p>
           {[
@@ -813,7 +841,6 @@ function ModalReporte({ reporte, config = {}, onClose }) {
           </div>
         </div>
 
-        {/* Pedidos */}
         {pedidos.length > 0 && (
           <div>
             <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">

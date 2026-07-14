@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../store/authStore';
 import { getLibroCaja, crearMovimiento } from '../../api/libroCaja';
-import { getCajaActiva, getSesiones } from '../../api/caja';
+import { getEstadoCajas, getSesiones } from '../../api/caja';
 import {
   Plus, TrendingUp, TrendingDown, DollarSign,
   Search, Filter, X, ChevronDown, ChevronUp,
@@ -289,12 +289,15 @@ export default function LibroCajaPage() {
     staleTime: 30_000,
   });
 
-  const { data: cajaActiva } = useQuery({
-    queryKey: ['caja-activa'],
-    queryFn: getCajaActiva,
-    enabled: puedoCrear,
+  const { data: cajas = [] } = useQuery({
+    queryKey: ['caja-estado', usuario?.sucursal_activa?.id],
+    queryFn: () => getEstadoCajas(usuario?.sucursal_activa?.id),
+    enabled: puedoCrear && !!usuario?.sucursal_activa?.id,
     staleTime: 60_000,
   });
+
+  // toma la primera caja con sesión abierta como default del modal de movimiento
+  const cajaActiva = cajas.map(c => c.sesion_abierta).find(Boolean) ?? null;
 
   const { data: sesiones = [] } = useQuery({
     queryKey: ['sesiones-caja'],

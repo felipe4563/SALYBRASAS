@@ -7,11 +7,12 @@ import {
 } from 'lucide-react';
 import { getMesas } from '../../api/mesas';
 import { getVentas, crearVentaCompleta } from '../../api/ventas';
-import { getCajaActiva } from '../../api/caja';
+import { getEstadoCajas } from '../../api/caja';
 import { getProductos } from '../../api/productos';
 import { getCategorias } from '../../api/categorias';
 import { BASE_URL } from '../../api/configuracion';
 import { usePermisos } from '../../hooks/usePermisos';
+import { useAuth } from '../../hooks/useAuth';
 import ModalLlevar from './components/ModalLlevar';
 import ModalMesas from './components/ModalMesas';
 import CategoriasBar from './components/CategoriasBar';
@@ -20,6 +21,7 @@ import socket from '../../socket';
 
 export default function VentasPage() {
   const { tienePermiso } = usePermisos();
+  const { usuario } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -42,12 +44,15 @@ export default function VentasPage() {
     enabled: puedeVer,
   });
 
-  const { data: cajaActiva, isLoading: cargandoCaja } = useQuery({
-    queryKey: ['caja-activa'],
-    queryFn: getCajaActiva,
+  const { data: cajasEstado = [], isLoading: cargandoCaja } = useQuery({
+    queryKey: ['caja-estado', usuario?.sucursal_activa?.id],
+    queryFn: () => getEstadoCajas(usuario?.sucursal_activa?.id),
     refetchInterval: 60_000,
-    enabled: puedeVer,
+    enabled: puedeVer && !!usuario?.sucursal_activa?.id,
   });
+
+  // primera caja con sesión abierta de la sucursal, usada como caja operativa de la venta
+  const cajaActiva = cajasEstado.map(c => c.sesion_abierta).find(Boolean) ?? null;
 
   const { data: pedidosActivos = [] } = useQuery({
     queryKey: ['ventas', 'activos'],

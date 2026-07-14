@@ -1,7 +1,7 @@
 import api from './cliente';
 
-export const getCajaActiva = (sucursal_id) =>
-  api.get('/caja/activa', { params: sucursal_id ? { sucursal_id } : {} }).then(r => r.data.datos).catch(() => null);
+export const getEstadoCajas = (sucursal_id) =>
+  api.get('/caja/estado', { params: sucursal_id ? { sucursal_id } : {} }).then(r => r.data.datos).catch(() => []);
 
 export const getSesiones = () =>
   api.get('/caja').then(r => r.data.datos);
@@ -9,8 +9,8 @@ export const getSesiones = () =>
 export const getSesion = (id) =>
   api.get(`/caja/${id}`).then(r => r.data.datos);
 
-export const abrirCaja = (monto_apertura, sucursal_id) =>
-  api.post('/caja/abrir', { monto_apertura, ...(sucursal_id ? { sucursal_id } : {}) }).then(r => r.data.datos);
+export const abrirCaja = (caja_id, monto_apertura) =>
+  api.post('/caja/abrir', { caja_id, monto_apertura }).then(r => r.data.datos);
 
 export const cerrarCaja = (id, denominaciones) =>
   api.post(`/caja/${id}/cerrar`, { denominaciones }).then(r => r.data.datos);

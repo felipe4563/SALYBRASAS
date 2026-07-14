@@ -7,7 +7,7 @@ import {
 import { useAuthStore } from '../store/authStore';
 import { useThemeStore } from '../store/themeStore';
 import { getVentas } from '../api/ventas';
-import { getCajaActiva } from '../api/caja';
+import { getEstadoCajas } from '../api/caja';
 import { TrendingUp, ShoppingBag, Wallet, XCircle, CalendarDays } from 'lucide-react';
 
 /* ─── Paleta de colores ───────────────────────────────────────── */
@@ -182,13 +182,23 @@ export default function Dashboard() {
     staleTime: 30_000,
   });
 
-  const { data: cajaActiva } = useQuery({
-    queryKey: ['caja-activa'],
-    queryFn: getCajaActiva,
-    enabled: puedeVerCaja,
+  const { data: cajas = [] } = useQuery({
+    queryKey: ['caja-estado', usuario?.sucursal_activa?.id],
+    queryFn: () => getEstadoCajas(usuario?.sucursal_activa?.id),
+    enabled: puedeVerCaja && !!usuario?.sucursal_activa?.id,
     refetchInterval: 60_000,
     staleTime: 30_000,
   });
+
+  // agrega las sesiones abiertas de todas las cajas de la sucursal para el widget del dashboard
+  const cajaActiva = useMemo(() => {
+    const abiertas = cajas.map(c => c.sesion_abierta).filter(Boolean);
+    if (abiertas.length === 0) return null;
+    return {
+      total_ventas: abiertas.reduce((sum, s) => sum + parseFloat(s.total_ventas ?? 0), 0),
+      total_gastos: abiertas.reduce((sum, s) => sum + parseFloat(s.total_gastos ?? 0), 0),
+    };
+  }, [cajas]);
 
   /* ─── filtrado ──────────────────────────────────────────────── */
   const ventasFiltradas = useMemo(() =>
