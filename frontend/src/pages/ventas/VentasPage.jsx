@@ -17,6 +17,7 @@ import ModalLlevar from './components/ModalLlevar';
 import ModalMesas from './components/ModalMesas';
 import CategoriasBar from './components/CategoriasBar';
 import ModalPagoQr from './components/ModalPagoQr';
+import SelectorOpcionModal from './components/SelectorOpcionModal';
 import Modal from '../../components/ui/Modal';
 import socket from '../../socket';
 
@@ -38,6 +39,7 @@ export default function VentasPage() {
   const [modalMesas, setModalMesas] = useState(false);
   const [modalCobrar, setModalCobrar] = useState(false);
   const [tabMobile, setTabMobile] = useState('productos'); // 'productos' | 'orden'
+  const [selectorOpcion, setSelectorOpcion] = useState(null); // producto con grupo_opciones, o null
 
   const { data: mesas = [], isLoading: cargandoMesas } = useQuery({
     queryKey: ['mesas'],
@@ -85,39 +87,52 @@ export default function VentasPage() {
     return acc;
   }, {});
 
-  const itemsPorProducto = useMemo(() => {
-    return carrito.reduce((acc, it) => { acc[it.producto_id] = it; return acc; }, {});
+  const cantidadPorProducto = useMemo(() => {
+    return carrito.reduce((acc, it) => { acc[it.producto_id] = (acc[it.producto_id] ?? 0) + it.cantidad; return acc; }, {});
   }, [carrito]);
 
   const total = carrito.reduce((sum, it) => sum + it.cantidad * it.precio, 0);
   const totalItems = carrito.reduce((sum, it) => sum + it.cantidad, 0);
   const puedeCobrarAhora = totalItems > 0 && (mesaSeleccionada != null || modoLlevar != null);
 
+  function agregarAlCarrito(prod, nota) {
+    setCarrito((prev) => {
+      const existente = prev.find((it) => it.producto_id === prod.id && it.nota === nota);
+      if (existente) {
+        return prev.map((it) => it === existente ? { ...it, cantidad: it.cantidad + 1 } : it);
+      }
+      return [...prev, { producto_id: prod.id, nombre: prod.nombre, precio: parseFloat(prod.precio), cantidad: 1, nota }];
+    });
+  }
+
   function handleProducto(prod) {
     if (!puedeCrear) return;
+    if (prod.grupo_opciones) {
+      setSelectorOpcion(prod);
+      return;
+    }
+    agregarAlCarrito(prod, null);
+  }
+
+  function elegirOpcion(nota) {
+    agregarAlCarrito(selectorOpcion, nota);
+    setSelectorOpcion(null);
+  }
+
+  function incrementar(producto_id, nota) {
+    setCarrito((prev) => prev.map((it) => it.producto_id === producto_id && it.nota === nota ? { ...it, cantidad: it.cantidad + 1 } : it));
+  }
+
+  function decrementar(producto_id, nota) {
     setCarrito((prev) => {
-      const existente = prev.find((it) => it.producto_id === prod.id);
-      if (existente) {
-        return prev.map((it) => it.producto_id === prod.id ? { ...it, cantidad: it.cantidad + 1 } : it);
-      }
-      return [...prev, { producto_id: prod.id, nombre: prod.nombre, precio: parseFloat(prod.precio), cantidad: 1, nota: null }];
+      const item = prev.find((it) => it.producto_id === producto_id && it.nota === nota);
+      if (item.cantidad <= 1) return prev.filter((it) => it !== item);
+      return prev.map((it) => it === item ? { ...it, cantidad: it.cantidad - 1 } : it);
     });
   }
 
-  function incrementar(producto_id) {
-    setCarrito((prev) => prev.map((it) => it.producto_id === producto_id ? { ...it, cantidad: it.cantidad + 1 } : it));
-  }
-
-  function decrementar(producto_id) {
-    setCarrito((prev) => {
-      const item = prev.find((it) => it.producto_id === producto_id);
-      if (item.cantidad <= 1) return prev.filter((it) => it.producto_id !== producto_id);
-      return prev.map((it) => it.producto_id === producto_id ? { ...it, cantidad: it.cantidad - 1 } : it);
-    });
-  }
-
-  function quitar(producto_id) {
-    setCarrito((prev) => prev.filter((it) => it.producto_id !== producto_id));
+  function quitar(producto_id, nota) {
+    setCarrito((prev) => prev.filter((it) => !(it.producto_id === producto_id && it.nota === nota)));
   }
 
   function handleClickMesaDisponible(mesa) {
@@ -208,7 +223,7 @@ export default function VentasPage() {
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
                 {productos.map((prod) => {
-                  const enCarrito = itemsPorProducto[prod.id];
+                  const cantidadEnCarrito = cantidadPorProducto[prod.id];
                   return (
                     <button
                       key={prod.id}
@@ -217,7 +232,7 @@ export default function VentasPage() {
                       className={`relative flex flex-col rounded-xl border transition-all text-left overflow-hidden ${
                         !puedeCrear
                           ? 'opacity-50 cursor-not-allowed'
-                          : enCarrito
+                          : cantidadEnCarrito
                           ? 'border-blue-400 dark:border-blue-500 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/30'
                           : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-blue-300 dark:hover:border-blue-600 hover:shadow-sm'
                       }`}
@@ -235,9 +250,9 @@ export default function VentasPage() {
                         <p className="text-sm font-medium text-gray-800 dark:text-gray-100 leading-tight line-clamp-2">{prod.nombre}</p>
                         <p className="text-sm font-bold text-blue-600 dark:text-blue-400 mt-1">Bs {parseFloat(prod.precio).toFixed(2)}</p>
                       </div>
-                      {enCarrito && (
+                      {cantidadEnCarrito && (
                         <span className="absolute top-2 right-2 w-6 h-6 bg-blue-600 text-white text-xs font-bold rounded-full flex items-center justify-center shadow">
-                          {enCarrito.cantidad}
+                          {cantidadEnCarrito}
                         </span>
                       )}
                     </button>
@@ -270,21 +285,22 @@ export default function VentasPage() {
                 </div>
               ) : (
                 carrito.map((it) => (
-                  <div key={it.producto_id} className="px-4 py-2.5 flex items-center gap-2">
+                  <div key={`${it.producto_id}|${it.nota ?? ''}`} className="px-4 py-2.5 flex items-center gap-2">
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate">{it.nombre}</p>
+                      {it.nota && <p className="text-xs text-amber-600 dark:text-amber-400 truncate">{it.nota}</p>}
                       <p className="text-xs text-gray-400">Bs {it.precio.toFixed(2)} c/u</p>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
-                      <button onClick={() => decrementar(it.producto_id)} className="w-6 h-6 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 flex items-center justify-center">
+                      <button onClick={() => decrementar(it.producto_id, it.nota)} className="w-6 h-6 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 flex items-center justify-center">
                         <Minus className="w-3 h-3" />
                       </button>
                       <span className="w-5 text-center text-sm font-semibold text-gray-800 dark:text-gray-100">{it.cantidad}</span>
-                      <button onClick={() => incrementar(it.producto_id)} className="w-6 h-6 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 flex items-center justify-center">
+                      <button onClick={() => incrementar(it.producto_id, it.nota)} className="w-6 h-6 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 flex items-center justify-center">
                         <Plus className="w-3 h-3" />
                       </button>
                     </div>
-                    <button onClick={() => quitar(it.producto_id)} className="shrink-0 p-1 text-gray-300 dark:text-gray-600 hover:text-red-500">
+                    <button onClick={() => quitar(it.producto_id, it.nota)} className="shrink-0 p-1 text-gray-300 dark:text-gray-600 hover:text-red-500">
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   </div>
@@ -410,6 +426,14 @@ export default function VentasPage() {
             queryClient.invalidateQueries({ queryKey: ['mesas'] });
             queryClient.invalidateQueries({ queryKey: ['ventas'] });
           }}
+        />
+      )}
+
+      {selectorOpcion && (
+        <SelectorOpcionModal
+          producto={selectorOpcion}
+          onElegir={elegirOpcion}
+          onClose={() => setSelectorOpcion(null)}
         />
       )}
     </div>
