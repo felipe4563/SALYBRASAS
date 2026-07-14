@@ -34,6 +34,7 @@ const Reservacion = require('./Reservacion');
 const Sucursal = require('./Sucursal');
 const ProductoStockSucursal = require('./ProductoStockSucursal');
 const Caja = require('./Caja');
+const PagoQr = require('./PagoQr');
 
 // Roles y Permisos
 Rol.belongsToMany(Permiso, { through: RolesPermisos, foreignKey: 'rol_id', otherKey: 'permiso_id', as: 'permisos' });
@@ -119,6 +120,11 @@ Sucursal.hasMany(Caja, { foreignKey: 'sucursal_id', as: 'cajas' });
 Caja.hasMany(SesionCaja, { foreignKey: 'caja_id', as: 'sesiones' });
 SesionCaja.belongsTo(Caja, { foreignKey: 'caja_id', as: 'caja' });
 
+// Pagos QR (CodePay)
+Pedido.hasMany(PagoQr, { foreignKey: 'pedido_id', as: 'pagosQr' });
+PagoQr.belongsTo(Pedido, { foreignKey: 'pedido_id', as: 'pedido' });
+PagoQr.belongsTo(Sucursal, { foreignKey: 'sucursal_id', as: 'sucursal' });
+
 module.exports = {
   sequelize,
   Rol, Permiso, Usuario,
@@ -134,4 +140,5 @@ module.exports = {
   Sucursal,
   ProductoStockSucursal,
   Caja,
+  PagoQr,
 };

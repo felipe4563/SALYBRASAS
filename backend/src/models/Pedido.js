@@ -10,7 +10,7 @@ const Pedido = sequelize.define('Pedido', {
   sesion_caja_id: { type: DataTypes.INTEGER.UNSIGNED },
   tipo: { type: DataTypes.ENUM('mesa', 'llevar'), defaultValue: 'mesa' },
   numero_llevar: { type: DataTypes.INTEGER.UNSIGNED, allowNull: true },
-  estado: { type: DataTypes.ENUM('pendiente','listo','completado','cancelado'), defaultValue: 'pendiente' },
+  estado: { type: DataTypes.ENUM('pendiente','listo','pendiente_pago','completado','cancelado'), defaultValue: 'pendiente' },
   tipo_documento: { type: DataTypes.STRING(50), defaultValue: 'Ticket' },
   nombre_cliente: { type: DataTypes.STRING(255), defaultValue: 'Público General' },
   documento_cliente: { type: DataTypes.STRING(50) },
