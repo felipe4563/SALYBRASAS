@@ -1,60 +1,124 @@
-# Task 1 Report: Migración, modelo PagoQr, estado pendiente_pago, credenciales CodePay
+# Task 1 Report: Migración y modelos (GrupoOpciones, Opcion, Producto.grupo_opciones_id)
 
-## Status: DONE
+## Status
+DONE
 
-## Commit
-`f1d464d` — feat(pagos-qr): tabla pagos_qr, modelo PagoQr y estado pendiente_pago en Pedido
+## Qué se hizo
+Implementé completamente la Task 1 según el brief, creando la infraestructura de base de datos y modelos Sequelize para soportar grupos de opciones/variantes por producto. Esta es la base para futuras tareas que permitirán asignar opciones (como "Término de cocción": Jugoso/Término medio/Bien cocido) a productos del sistema.
 
-## What was done
+## Pasos ejecutados
 
-1. **Migration** (`backend/database/migrations/015_pagos_qr.sql`): created `pagos_qr` table
-   (FKs to `pedidos` and `sucursales`, `estado` ENUM, `datos_webhook` JSON, timestamps) and
-   altered `pedidos.estado` ENUM to add `'pendiente_pago'`. Applied directly against the local
-   dev DB (`mysql -u root bd_restaurante < database/migrations/015_pagos_qr.sql`) with no errors —
-   the `sql_mode` workaround mentioned in the brief was not needed this time.
-   Verified via `SHOW CREATE TABLE pagos_qr` and `SHOW COLUMNS FROM pedidos LIKE 'estado'`.
+### Step 1: Migración SQL
+Archivo creado: `backend/database/migrations/017_opciones_producto.sql`
 
-2. **Model** (`backend/src/models/PagoQr.js`): created verbatim per brief, following the
-   `Caja.js` pattern (tableName `pagos_qr`, `creado_en`/`actualizado_en` timestamps).
+Contiene:
+- Tabla `grupos_opciones` (id, nombre, timestamps)
+- Tabla `opciones` (id, grupo_opciones_id, nombre, orden, timestamps con FK en cascada)
+- Alter table en `productos` agregando columna `grupo_opciones_id` (nullable con FK en SET NULL)
 
-3. **Pedido model** (`backend/src/models/Pedido.js`): updated `estado` ENUM to include
-   `'pendiente_pago'`.
+### Step 2: Aplicar la migración
+Comando ejecutado:
+```bash
+cd backend
+Get-Content database/migrations/017_opciones_producto.sql | mysql -u root bd_restaurante
+```
+**Resultado:** Éxito, sin errores. Las tres instrucciones SQL se ejecutaron correctamente.
 
-4. **Model registry** (`backend/src/models/index.js`): added `require('./PagoQr')`, the three
-   associations (`Pedido.hasMany(PagoQr, { as: 'pagosQr' })`, `PagoQr.belongsTo(Pedido, { as:
-   'pedido' })`, `PagoQr.belongsTo(Sucursal, { as: 'sucursal' })`) placed after the "Cajas
-   físicas" block, and added `PagoQr` to `module.exports`.
+### Step 3-4: Modelos Sequelize
+- `backend/src/models/GrupoOpciones.js` - Modelo con campos id, nombre
+- `backend/src/models/Opcion.js` - Modelo con campos id, grupo_opciones_id, nombre, orden
 
-5. **Environment variables**:
-   - `backend/.env.example` (committed): appended the 7 `CODEPAY_*` keys with empty/placeholder
-     values (`CODEPAY_SANDBOX=true`, `CODEPAY_API_URL=...`, rest blank).
-   - `backend/.env` (gitignored, NOT committed): appended the same 7 keys with the real values
-     provided directly by the controller in chat. Confirmed via `git diff --cached | grep` that
-     none of the real secret strings appear anywhere in the staged/committed diff.
+### Step 5: Modificar Producto.js
+Agregué campo `grupo_opciones_id` (tipo INTEGER.UNSIGNED, nullable) después de `categoria_id` en el modelo Producto.
 
-6. **Test** (`backend/tests/pagos_qr.model.test.js`): created verbatim per brief.
+### Step 6: Registrar en index.js
+- Agregué requires para GrupoOpciones y Opcion
+- Definí todas las asociaciones:
+  - `GrupoOpciones.hasMany(Opcion)` con alias 'opciones'
+  - `Opcion.belongsTo(GrupoOpciones)` con alias 'grupo'
+  - `Producto.belongsTo(GrupoOpciones)` con alias 'grupo_opciones'
+  - `GrupoOpciones.hasMany(Producto)` con alias 'productos'
+- Exporté ambos modelos en module.exports
 
-## Test results
+### Step 7: Test
+Archivo creado: `backend/tests/opciones.model.test.js`
 
-- `cd backend && npm test -- pagos_qr.model.test.js` → **3/3 PASS**.
-- Full suite sanity check: `cd backend && npm test` → **19 suites / 91 tests, all PASS**
-  (nothing else broke from the ENUM change or new model/associations).
+Contiene 2 tests:
+1. "crea un grupo de opciones con sus opciones asociadas" - Verifica que se puede crear un grupo y cargar sus opciones con include
+2. "un producto puede asignarse a un grupo de opciones, y al borrar el grupo queda sin asignar" - Verifica FK ON DELETE SET NULL
 
-## Commit contents (verified before commit)
+También creé `backend/tests/setup.js` para cargar dotenv en los tests, e actualicé `backend/package.json` para usar este setup file.
 
-Only the files listed in the brief were staged and committed:
-`backend/database/migrations/015_pagos_qr.sql`, `backend/src/models/PagoQr.js`,
-`backend/src/models/Pedido.js`, `backend/src/models/index.js`, `backend/.env.example`,
-`backend/tests/pagos_qr.model.test.js`. `backend/.env` was left untouched by git (gitignored,
-holds the real CodePay credentials the controller shared in chat).
-Pre-existing unrelated modifications/deletions to `.superpowers/sdd/*.md` files already present
-in the working tree at the start of this task were left unstaged/untouched — out of scope.
+### Step 8: Ejecución del test
+Comando:
+```bash
+npx jest tests/opciones.model.test.js
+```
 
-## Concerns
+**Resultado:**
+```
+Test Suites: 1 passed, 1 total
+Tests:       2 passed, 2 total
+Snapshots:   0 total
+Time:        1.127 s
+```
 
-None. All steps completed as specified, migration applied cleanly, tests green, no secrets in
-any committed file.
+Ambos tests pasaron exitosamente.
 
-Note: this file previously held a report for an unrelated earlier "Task 1" (Caja model /
-migration 014). That content has been superseded here since it belonged to a different phase's
-task numbering and this conversation's task-1-brief.md is the PagoQr/CodePay one.
+### Step 9: Commit
+Comando ejecutado:
+```bash
+git add backend/database/migrations/017_opciones_producto.sql backend/src/models/GrupoOpciones.js backend/src/models/Opcion.js backend/src/models/Producto.js backend/src/models/index.js backend/tests/opciones.model.test.js backend/tests/setup.js backend/package.json
+git commit -m "feat(productos): modelo de grupos de opciones y opciones por producto"
+```
+
+**Resultado:**
+```
+[main a2059d1] feat(productos): modelo de grupos de opciones y opciones por producto
+ 8 files changed, 102 insertions(+)
+ create mode 100644 backend/database/migrations/017_opciones_producto.sql
+ create mode 100644 backend/src/models/GrupoOpciones.js
+ create mode 100644 backend/src/models/Opcion.js
+ create mode 100644 backend/tests/opciones.model.test.js
+ create mode 100644 backend/tests/setup.js
+```
+
+## Archivos finales creados/modificados
+
+**Creados:**
+- `backend/database/migrations/017_opciones_producto.sql` - Migración SQL
+- `backend/src/models/GrupoOpciones.js` - Modelo GrupoOpciones
+- `backend/src/models/Opcion.js` - Modelo Opcion
+- `backend/tests/opciones.model.test.js` - Tests de los modelos
+- `backend/tests/setup.js` - Setup file para jest con dotenv
+
+**Modificados:**
+- `backend/src/models/Producto.js` - Agregado campo grupo_opciones_id
+- `backend/src/models/index.js` - Agregados requires, asociaciones y exports
+- `backend/package.json` - Agregado setupFilesAfterEnv en jest config
+
+## Detalles técnicos
+
+### Asociaciones Sequelize implementadas
+Las asociaciones garantizan:
+1. Un GrupoOpciones puede tener muchas Opciones (hasMany)
+2. Una Opcion pertenece a un GrupoOpciones (belongsTo)
+3. Un Producto puede tener un GrupoOpciones (belongsTo) - nullable
+4. Un GrupoOpciones puede tener muchos Productos (hasMany)
+
+### Comportamiento de FKs
+- `opciones.grupo_opciones_id` → ON DELETE CASCADE (al borrar grupo, se borran sus opciones)
+- `productos.grupo_opciones_id` → ON DELETE SET NULL (al borrar grupo, el producto queda sin asignar)
+
+### Notas de implementación
+- Usado `setupFilesAfterEnv` en jest config para cargar dotenv automáticamente en tests
+- Todos los timestamps utilizan la convención ya existente (creado_en, actualizado_en)
+- Campo `orden` en opciones permite futuros ordenamientos personalizados
+- Campo `grupo_opciones_id` en Producto es nullable, permitiendo productos sin opciones asignadas
+
+## Resultado
+✓ Task 1 completada exitosamente
+✓ 2 tests pasando
+✓ Commit realizado: a2059d1
+✓ Base de datos actualizada
+✓ Todos los modelos y asociaciones funcionando correctamente
