@@ -1,21 +1,18 @@
-const { SesionCaja, DetalleArqueo, Gasto, LibroCaja, Usuario, Pedido, Mesa, sequelize } = require('../../models');
+const { SesionCaja, DetalleArqueo, Gasto, LibroCaja, Usuario, Pedido, Mesa, Caja, sequelize } = require('../../models');
 
-async function obtenerActiva(usuario_id, sucursal_id) {
-  const sesion = await SesionCaja.findOne({
-    where: { usuario_id, sucursal_id, estado: 'abierta' },
+async function listarConEstado(sucursal_id) {
+  const cajas = await Caja.findAll({
+    where: { sucursal_id, activo: 1 },
+    order: [['nombre', 'ASC']],
+  });
+  const sesiones = await SesionCaja.findAll({
+    where: { caja_id: cajas.map(c => c.id), estado: 'abierta' },
     include: [{ model: Usuario, as: 'usuario', attributes: ['id', 'nombre'] }],
   });
-  if (!sesion) return null;
-
-  const [ventasEfectivo, ventasQR] = await Promise.all([
-    LibroCaja.sum('monto', { where: { sesion_caja_id: sesion.id, tipo: 'ingreso', metodo_pago: 'efectivo' } }),
-    LibroCaja.sum('monto', { where: { sesion_caja_id: sesion.id, tipo: 'ingreso', metodo_pago: 'qr' } }),
-  ]);
-
-  const datos = sesion.toJSON();
-  datos.ventas_efectivo = ventasEfectivo || 0;
-  datos.ventas_qr       = ventasQR       || 0;
-  return datos;
+  return cajas.map(c => {
+    const sesion = sesiones.find(s => s.caja_id === c.id) ?? null;
+    return { id: c.id, nombre: c.nombre, sesion_abierta: sesion };
+  });
 }
 
 async function listar(alcance = {}) {
@@ -44,13 +41,26 @@ async function obtener(id, alcance) {
   });
   if (!s) throw Object.assign(new Error('Sesión no encontrada'), { status: 404 });
   _verificarAlcance(s, alcance);
-  return s;
+
+  const [ventasEfectivo, ventasQR] = await Promise.all([
+    LibroCaja.sum('monto', { where: { sesion_caja_id: s.id, tipo: 'ingreso', metodo_pago: 'efectivo' } }),
+    LibroCaja.sum('monto', { where: { sesion_caja_id: s.id, tipo: 'ingreso', metodo_pago: 'qr' } }),
+  ]);
+
+  const datos = s.toJSON();
+  datos.ventas_efectivo = ventasEfectivo || 0;
+  datos.ventas_qr       = ventasQR       || 0;
+  return datos;
 }
 
-async function abrir(usuario_id, sucursal_id, monto_apertura = 0) {
-  const activa = await obtenerActiva(usuario_id, sucursal_id);
-  if (activa) throw Object.assign(new Error('Ya tienes una sesión de caja abierta en esta sucursal'), { status: 409 });
-  return SesionCaja.create({ usuario_id, sucursal_id, monto_apertura });
+async function abrir(usuario_id, caja_id, monto_apertura = 0) {
+  const caja = await Caja.findByPk(caja_id);
+  if (!caja || !caja.activo) throw Object.assign(new Error('Caja no encontrada'), { status: 404 });
+
+  const abierta = await SesionCaja.findOne({ where: { caja_id, estado: 'abierta' } });
+  if (abierta) throw Object.assign(new Error('Esta caja ya tiene una sesión abierta'), { status: 409 });
+
+  return SesionCaja.create({ usuario_id, caja_id, sucursal_id: caja.sucursal_id, monto_apertura });
 }
 
 async function registrarGasto(sesion_id, usuario_id, { descripcion, monto }, alcance) {
@@ -94,10 +104,8 @@ async function cerrar(sesion_id, usuario_id, denominaciones = [], alcance) {
   if (sesion.estado !== 'abierta') throw Object.assign(new Error('La sesión ya está cerrada'), { status: 409 });
   if (sesion.usuario_id !== usuario_id) throw Object.assign(new Error('Solo el cajero que abrió puede cerrar la sesión'), { status: 403 });
 
-  // Calcular total físico de denominaciones
   const total_fisico = denominaciones.reduce((sum, d) => sum + (parseFloat(d.denominacion) * parseInt(d.cantidad)), 0);
 
-  // Guardar detalle de arqueo
   if (denominaciones.length > 0) {
     await DetalleArqueo.destroy({ where: { sesion_caja_id: sesion_id } });
     await DetalleArqueo.bulkCreate(
@@ -110,7 +118,6 @@ async function cerrar(sesion_id, usuario_id, denominaciones = [], alcance) {
     );
   }
 
-  // Calcular ventas en efectivo para el arqueo
   const ventasEfectivo = await LibroCaja.sum('monto', {
     where: { sesion_caja_id: sesion_id, tipo: 'ingreso', metodo_pago: 'efectivo' },
   }) || 0;
@@ -131,7 +138,6 @@ async function cerrar(sesion_id, usuario_id, denominaciones = [], alcance) {
 async function reporte(sesion_id, alcance) {
   const sesion = await obtener(sesion_id, alcance);
 
-  // Ventas por método de pago (todas las filas del GROUP BY)
   const ventasPorMetodoArr = await sequelize.query(
     `SELECT metodo_pago, COUNT(*) as cantidad, SUM(monto) as total
      FROM libro_caja
@@ -140,14 +146,12 @@ async function reporte(sesion_id, alcance) {
     { replacements: [sesion_id], type: sequelize.QueryTypes.SELECT }
   );
 
-  // Pedidos completados en la sesión
   const pedidos = await Pedido.findAll({
     where: { sesion_caja_id: sesion_id, estado: 'completado' },
     include: [{ model: Mesa, as: 'mesa', attributes: ['id', 'nombre'] }],
     order: [['creado_en', 'DESC']],
   });
 
-  // Productos vendidos en el turno (agrupado por producto)
   const productosVendidos = await sequelize.query(
     `SELECT pr.nombre, SUM(dp.cantidad) AS total_cantidad, SUM(dp.cantidad * dp.precio) AS total
      FROM detalle_pedidos dp
@@ -173,4 +177,4 @@ async function reporte(sesion_id, alcance) {
   };
 }
 
-module.exports = { obtenerActiva, listar, obtener, abrir, registrarGasto, listarGastos, cerrar, reporte };
+module.exports = { listarConEstado, listar, obtener, abrir, registrarGasto, listarGastos, cerrar, reporte };

@@ -1,26 +1,15 @@
 const svc = require('./caja.service');
-const { Sucursal } = require('../../models');
+const { Caja } = require('../../models');
 
 function _alcance(req) {
   return { sucursal_id: req.usuario.sucursal_id, acceso_todas: req.usuario.acceso_todas };
 }
 
-async function _resolverSucursal(req) {
-  if (!req.usuario.acceso_todas) return req.usuario.sucursal_id;
-  const sucursal_id = req.body.sucursal_id || req.query.sucursal_id;
-  if (!sucursal_id) {
-    throw Object.assign(new Error('sucursal_id es requerido'), { status: 400 });
-  }
-  const existe = await Sucursal.findByPk(sucursal_id);
-  if (!existe) throw Object.assign(new Error('Sucursal no encontrada'), { status: 404 });
-  return sucursal_id;
-}
-
-async function obtenerActiva(req, res, next) {
+async function estado(req, res, next) {
   try {
-    const sucursal_id = await _resolverSucursal(req);
-    const sesion = await svc.obtenerActiva(req.usuario.id, sucursal_id);
-    res.json({ ok: true, datos: sesion });
+    const sucursal_id = req.usuario.acceso_todas ? req.query.sucursal_id : req.usuario.sucursal_id;
+    if (!sucursal_id) return res.status(400).json({ ok: false, mensaje: 'sucursal_id es requerido' });
+    res.json({ ok: true, datos: await svc.listarConEstado(sucursal_id) });
   } catch (err) { next(err); }
 }
 
@@ -36,9 +25,16 @@ async function obtener(req, res, next) {
 
 async function abrir(req, res, next) {
   try {
-    const { monto_apertura } = req.body;
-    const sucursal_id = await _resolverSucursal(req);
-    res.status(201).json({ ok: true, datos: await svc.abrir(req.usuario.id, sucursal_id, monto_apertura) });
+    const { caja_id, monto_apertura } = req.body;
+    if (!caja_id) return res.status(400).json({ ok: false, mensaje: 'caja_id es requerido' });
+
+    const caja = await Caja.findByPk(caja_id);
+    if (!caja) return res.status(404).json({ ok: false, mensaje: 'Caja no encontrada' });
+    if (!req.usuario.acceso_todas && caja.sucursal_id !== req.usuario.sucursal_id) {
+      return res.status(404).json({ ok: false, mensaje: 'Caja no encontrada' });
+    }
+
+    res.status(201).json({ ok: true, datos: await svc.abrir(req.usuario.id, caja_id, monto_apertura) });
   } catch (err) { next(err); }
 }
 
@@ -67,4 +63,4 @@ async function reporte(req, res, next) {
   catch (err) { next(err); }
 }
 
-module.exports = { obtenerActiva, listar, obtener, abrir, registrarGasto, listarGastos, cerrar, reporte };
+module.exports = { estado, listar, obtener, abrir, registrarGasto, listarGastos, cerrar, reporte };
