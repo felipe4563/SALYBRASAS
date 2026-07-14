@@ -1,93 +1,207 @@
-# Task 2: Conexión a base de datos
+### Task 2: Cliente CodePay (firma JWT, generar QR, consultar estado, verificar webhook)
 
-**Objetivo:** Crear la configuración de Sequelize con las opciones correctas para MySQL, timezone Bolivia y timestamps en español.
+**Files:**
+- Create: `backend/src/integrations/codepay/codepay.client.js`
+- Test: `backend/tests/codepay.client.test.js`
 
-**Directorio de trabajo:** `c:/Users/ASUS/OneDrive/Escritorio/TODO/SISTEMAS/RESTAURANTE/backend/`
+**Interfaces:**
+- Consumes: variables de entorno `CODEPAY_SANDBOX`, `CODEPAY_API_URL`, `CODEPAY_PUBLIC_KEY`, `CODEPAY_SECRET_KEY`, `CODEPAY_SANDBOX_PUBLIC_KEY`, `CODEPAY_SANDBOX_SECRET_KEY`, `CODEPAY_NOTIFICATION_SECRET` (Task 1).
+- Produces: `module.exports = { firmarToken, generarQr, consultarEstado, verificarFirmaWebhook }` — usado por `ventas.service.js` (Task 3) y el módulo de webhook (Task 4).
+  - `generarQr({ order_id, amount, description, expires_at, currency })` → `Promise<{ qr_code, tx_id, amount, net_amount, commission_amount, expires_at, order_id }>`.
+  - `consultarEstado(tx_id)` → `Promise<{ status, tx_id, order_id }>`.
+  - `verificarFirmaWebhook(rawBody: Buffer, signatureHeader: string|undefined)` → `boolean`.
 
-**Contexto:** El scaffolding base ya existe (Task 1 completada). El proyecto tiene Express 4, dotenv, y Sequelize instalados. Git ya está inicializado.
+- [ ] **Step 1: Escribir el cliente**
 
-## Global Constraints
+`backend/src/integrations/codepay/codepay.client.js`:
 
-- Base de datos completamente en español (tablas y columnas)
-- Moneda: Bs (Bolivia), zona horaria: `America/La_Paz`
-- Puerto backend: 3001
-- Node.js 20+, Express 4, Sequelize 6, MySQL 8
+```javascript
+const { createHmac, timingSafeEqual } = require('crypto');
 
-## Archivos a crear
+function _credenciales() {
+  const sandbox = process.env.CODEPAY_SANDBOX === 'true';
+  return {
+    apiUrl: process.env.CODEPAY_API_URL,
+    publicKey: sandbox ? process.env.CODEPAY_SANDBOX_PUBLIC_KEY : process.env.CODEPAY_PUBLIC_KEY,
+    secretKey: sandbox ? process.env.CODEPAY_SANDBOX_SECRET_KEY : process.env.CODEPAY_SECRET_KEY,
+  };
+}
 
-- `backend/src/config/database.js`
+function firmarToken(payload, secretKey) {
+  const header = { alg: 'HS256', typ: 'JWT' };
+  const h = Buffer.from(JSON.stringify(header)).toString('base64url');
+  const p = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  const sig = createHmac('sha256', secretKey).update(`${h}.${p}`).digest('base64url');
+  return `${h}.${p}.${sig}`;
+}
 
-## Pasos
+async function generarQr({ order_id, amount, description, expires_at, currency = 'BOB' }) {
+  const { apiUrl, publicKey, secretKey } = _credenciales();
+  const payload = { app_key: publicKey, order_id, amount, currency, description, expires_at };
+  const token = firmarToken(payload, secretKey);
 
-### Step 1: Crear `src/config/database.js`
-
-```js
-const { Sequelize } = require('sequelize');
-
-const sequelize = new Sequelize(
-  process.env.DB_NAME,
-  process.env.DB_USER,
-  process.env.DB_PASS,
-  {
-    host: process.env.DB_HOST,
-    port: process.env.DB_PORT || 3306,
-    dialect: 'mysql',
-    timezone: 'America/La_Paz',
-    logging: process.env.NODE_ENV === 'development' ? console.log : false,
-    define: {
-      timestamps: true,
-      createdAt: 'creado_en',
-      updatedAt: 'actualizado_en',
-      underscored: true,
-    },
+  let res;
+  try {
+    res = await fetch(`${apiUrl}/v1/payments/qr`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token, pk: publicKey }),
+    });
+  } catch {
+    throw Object.assign(new Error('No se pudo generar el QR, intenta de nuevo o cobra en efectivo'), { status: 502 });
   }
-);
 
-module.exports = sequelize;
+  if (!res.ok) {
+    throw Object.assign(new Error('No se pudo generar el QR, intenta de nuevo o cobra en efectivo'), { status: 502 });
+  }
+  return res.json();
+}
+
+async function consultarEstado(tx_id) {
+  const { apiUrl } = _credenciales();
+
+  let res;
+  try {
+    res = await fetch(`${apiUrl}/checkout/status/${tx_id}`);
+  } catch {
+    throw Object.assign(new Error('No se pudo consultar el estado del pago en CodePay'), { status: 502 });
+  }
+
+  if (!res.ok) {
+    throw Object.assign(new Error('No se pudo consultar el estado del pago en CodePay'), { status: 502 });
+  }
+  return res.json();
+}
+
+function verificarFirmaWebhook(rawBody, signatureHeader) {
+  if (!signatureHeader || !rawBody) return false;
+
+  const esperada = createHmac('sha256', process.env.CODEPAY_NOTIFICATION_SECRET).update(rawBody).digest('hex');
+
+  let recibida;
+  try {
+    recibida = Buffer.from(signatureHeader, 'hex');
+  } catch {
+    return false;
+  }
+  const calculada = Buffer.from(esperada, 'hex');
+  if (recibida.length !== calculada.length) return false;
+  return timingSafeEqual(recibida, calculada);
+}
+
+module.exports = { firmarToken, generarQr, consultarEstado, verificarFirmaWebhook };
 ```
 
-### Step 2: Verificar que `.env` tenga las credenciales correctas
+- [ ] **Step 2: Escribir los tests (con `fetch` mockeado — nunca se llama a CodePay real)**
 
-El `.env` ya existe desde Task 1. Solo confirma que tiene valores para:
-- `DB_HOST`, `DB_NAME`, `DB_USER`, `DB_PASS`
+`backend/tests/codepay.client.test.js`:
 
-Si `DB_NAME` no tiene un valor concreto, usa `restaurante_db`.
+```javascript
+process.env.CODEPAY_SANDBOX = 'true';
+process.env.CODEPAY_API_URL = 'https://payapi.codewave.com.bo/api';
+process.env.CODEPAY_SANDBOX_PUBLIC_KEY = 'pk_test_x';
+process.env.CODEPAY_SANDBOX_SECRET_KEY = 'sk_test_x';
+process.env.CODEPAY_NOTIFICATION_SECRET = 'whsec_test_x';
 
-### Step 3: Probar la conexión
+const { createHmac } = require('crypto');
+const {
+  firmarToken, generarQr, consultarEstado, verificarFirmaWebhook,
+} = require('../src/integrations/codepay/codepay.client');
 
-Agrega temporalmente en `src/server.js` (después del require de app):
+describe('codepayClient.firmarToken', () => {
+  it('genera un JWT con 3 segmentos y firma determinística para el mismo payload', () => {
+    const payload = { app_key: 'pk_test_x', order_id: 'pedido_1_1', amount: 10, currency: 'BOB' };
+    const token1 = firmarToken(payload, 'sk_test_x');
+    const token2 = firmarToken(payload, 'sk_test_x');
+    expect(token1.split('.')).toHaveLength(3);
+    expect(token1).toBe(token2);
+  });
 
-```js
-const sequelize = require('./config/database');
-sequelize.authenticate()
-  .then(() => console.log('DB conectada'))
-  .catch(err => console.error('Error DB:', err.message));
+  it('cambia la firma si cambia el secreto', () => {
+    const payload = { app_key: 'pk_test_x', order_id: 'pedido_1_1', amount: 10, currency: 'BOB' };
+    const tokenA = firmarToken(payload, 'sk_test_x');
+    const tokenB = firmarToken(payload, 'otro_secreto');
+    expect(tokenA).not.toBe(tokenB);
+  });
+});
+
+describe('codepayClient.generarQr', () => {
+  const originalFetch = global.fetch;
+  afterEach(() => { global.fetch = originalFetch; });
+
+  it('devuelve el JSON de CodePay cuando la respuesta es ok', async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ qr_code: 'data:image/png;base64,abc', tx_id: 'tx_1', amount: 10.35, net_amount: 10, commission_amount: 0.35 }),
+    });
+
+    const res = await generarQr({ order_id: 'pedido_1_1', amount: 10, description: 'VentaTest', expires_at: new Date().toISOString() });
+    expect(res.tx_id).toBe('tx_1');
+    expect(global.fetch).toHaveBeenCalledWith(
+      'https://payapi.codewave.com.bo/api/v1/payments/qr',
+      expect.objectContaining({ method: 'POST' }),
+    );
+  });
+
+  it('lanza 502 si CodePay responde !ok', async () => {
+    global.fetch = jest.fn().mockResolvedValue({ ok: false, json: async () => ({}) });
+    await expect(generarQr({ order_id: 'pedido_1_1', amount: 10, description: 'x', expires_at: new Date().toISOString() }))
+      .rejects.toMatchObject({ status: 502 });
+  });
+
+  it('lanza 502 si falla la red', async () => {
+    global.fetch = jest.fn().mockRejectedValue(new Error('network down'));
+    await expect(generarQr({ order_id: 'pedido_1_1', amount: 10, description: 'x', expires_at: new Date().toISOString() }))
+      .rejects.toMatchObject({ status: 502 });
+  });
+});
+
+describe('codepayClient.consultarEstado', () => {
+  const originalFetch = global.fetch;
+  afterEach(() => { global.fetch = originalFetch; });
+
+  it('devuelve el estado reportado por CodePay', async () => {
+    global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ status: 'completed', tx_id: 'tx_1', order_id: 'pedido_1_1' }) });
+    const res = await consultarEstado('tx_1');
+    expect(res.status).toBe('completed');
+  });
+
+  it('lanza 502 si CodePay responde !ok', async () => {
+    global.fetch = jest.fn().mockResolvedValue({ ok: false, json: async () => ({}) });
+    await expect(consultarEstado('tx_1')).rejects.toMatchObject({ status: 502 });
+  });
+});
+
+describe('codepayClient.verificarFirmaWebhook', () => {
+  it('acepta una firma válida', () => {
+    const body = Buffer.from(JSON.stringify({ event: 'payment.completed', order_id: 'pedido_1_1' }));
+    const firma = createHmac('sha256', 'whsec_test_x').update(body).digest('hex');
+    expect(verificarFirmaWebhook(body, firma)).toBe(true);
+  });
+
+  it('rechaza una firma inválida', () => {
+    const body = Buffer.from(JSON.stringify({ event: 'payment.completed', order_id: 'pedido_1_1' }));
+    expect(verificarFirmaWebhook(body, 'firma_incorrecta_pero_hex_00112233')).toBe(false);
+  });
+
+  it('rechaza si no hay header de firma', () => {
+    const body = Buffer.from(JSON.stringify({ event: 'payment.completed' }));
+    expect(verificarFirmaWebhook(body, undefined)).toBe(false);
+  });
+});
 ```
 
-Corre `node src/server.js` para verificar (si la DB no existe aún está bien, solo confirma que no hay error de sintaxis/import; si hay error de conexión es esperado sin DB activa — el test real se hará en Task 4).
+- [ ] **Step 3: Correr los tests**
 
-### Step 4: Quitar el bloque temporal de `server.js`
+Run: `cd backend && npm test -- codepay.client.test.js`
+Expected: 9/9 tests PASS. Ninguna llamada de red real (todo mockeado).
 
-Deja `server.js` exactamente como estaba antes de agregar el bloque temporal.
-
-### Step 5: Commit
+- [ ] **Step 4: Commit**
 
 ```bash
-git add src/config/database.js
-git commit -m "feat: configurar conexión Sequelize con MySQL y timezone Bolivia"
+git add backend/src/integrations/codepay/codepay.client.js backend/tests/codepay.client.test.js
+git commit -m "feat(pagos-qr): cliente HTTP de CodePay (firma JWT, generar QR, consultar estado, verificar webhook)"
 ```
 
-## Report contract
+---
 
-Escribe el resultado en `.superpowers/sdd/task-2-report.md`:
-```
-STATUS: DONE
-
-Commits:
-- <hash> feat: configurar conexión Sequelize con MySQL y timezone Bolivia
-
-Tests: N/A
-
-Archivos creados:
-- src/config/database.js
-```

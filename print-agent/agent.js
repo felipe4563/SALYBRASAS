@@ -238,7 +238,7 @@ function buildCocina(data) {
   t.rule('#');
 
   // ── Info ──────────────────────────────────────────────────────────────────
-  if (esLlevar) t.left().bold(true).line('Cliente: ' + (pedido.nombre_cliente || '-')).bold(false);
+  if (esLlevar) t.left().bold(true).dblH().line('Cliente: ' + (pedido.nombre_cliente || '-')).normal().bold(false);
   t.left().line('Hora: ' + hora);
   t.rule('#');
 

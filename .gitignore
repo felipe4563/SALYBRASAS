@@ -4,3 +4,7 @@ print-agent/*
 node_modules/
 
 # Dumps de base de datos (no subir datos/backups al repo)
+
+# Archivos subidos por usuarios (imágenes de productos, logo, etc.)
+backend/uploads/*
+!backend/uploads/.gitkeep
