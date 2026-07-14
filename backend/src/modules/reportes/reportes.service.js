@@ -65,7 +65,7 @@ async function caja({ desde, hasta, sucursal_id, acceso_todas } = {}) {
   const includeSesion = {
     model: SesionCaja,
     as: 'sesion_caja',
-    attributes: [],
+    attributes: ['id'],
     include: [INCLUDE_SUCURSAL],
   };
   if (!acceso_todas) includeSesion.where = { sucursal_id };
