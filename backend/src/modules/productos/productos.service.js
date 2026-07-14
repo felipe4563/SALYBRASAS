@@ -96,7 +96,11 @@ async function listarProductos({ categoria_id, solo_vendibles, solo_disponibles,
 
   const productos = await Producto.findAll({
     where,
-    include: [{ model: Categoria, as: 'categoria', attributes: ['id', 'nombre'] }],
+    include: [
+      { model: Categoria, as: 'categoria', attributes: ['id', 'nombre'] },
+      { model: GrupoOpciones, as: 'grupo_opciones', attributes: ['id', 'nombre'],
+        include: [{ model: Opcion, as: 'opciones', attributes: ['id', 'nombre', 'orden'] }] },
+    ],
     order,
   });
 
@@ -110,14 +114,18 @@ async function listarProductos({ categoria_id, solo_vendibles, solo_disponibles,
 
 async function obtenerProducto(id, alcance) {
   const p = await Producto.findByPk(id, {
-    include: [{ model: Categoria, as: 'categoria', attributes: ['id', 'nombre'] }],
+    include: [
+      { model: Categoria, as: 'categoria', attributes: ['id', 'nombre'] },
+      { model: GrupoOpciones, as: 'grupo_opciones', attributes: ['id', 'nombre'],
+        include: [{ model: Opcion, as: 'opciones', attributes: ['id', 'nombre', 'orden'] }] },
+    ],
   });
   if (!p) throw Object.assign(new Error('Producto no encontrado'), { status: 404 });
   const [conStock] = await mezclarStockPorSucursal([p], alcance);
   return conStock;
 }
 
-async function crearProducto({ categoria_id, nombre, codigo_barras, codigo, precio, costo, stock, sucursal_id, es_vendible, imagen }, alcance) {
+async function crearProducto({ categoria_id, nombre, codigo_barras, codigo, precio, costo, stock, sucursal_id, es_vendible, imagen, grupo_opciones_id }, alcance) {
   let sucursalDestino;
   const conStock = stock !== undefined && stock !== null;
 
@@ -132,7 +140,7 @@ async function crearProducto({ categoria_id, nombre, codigo_barras, codigo, prec
     }
   }
 
-  const producto = await Producto.create({ categoria_id, nombre, codigo_barras, codigo, precio, costo, stock: conStock ? 0 : null, es_vendible, imagen });
+  const producto = await Producto.create({ categoria_id, nombre, codigo_barras, codigo, precio, costo, stock: conStock ? 0 : null, es_vendible, imagen, grupo_opciones_id });
 
   if (conStock) {
     await ajustarStockSucursal({ producto_id: producto.id, sucursal_id: sucursalDestino, tipo: 'ajuste', cantidad: stock, usuario_id: alcance.usuario_id, nota: 'Stock inicial' });

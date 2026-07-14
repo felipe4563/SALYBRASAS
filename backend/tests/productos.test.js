@@ -14,7 +14,7 @@ describe('Productos API', () => {
 });
 
 const bcrypt = require('bcryptjs');
-const { Sucursal, ProductoStockSucursal, Categoria, Usuario, Rol, Producto } = require('../src/models');
+const { Sucursal, ProductoStockSucursal, Categoria, Usuario, Rol, Producto, GrupoOpciones, Opcion } = require('../src/models');
 
 describe('Stock de productos por sucursal', () => {
   let adminToken, categoriaId, sucursalPrincipalId;
@@ -135,5 +135,54 @@ describe('Productos — stock inicial con acceso a todas las sucursales', () => 
 
     const despues = await Producto.count({ where: { categoria_id: categoriaId } });
     expect(despues).toBe(antes); // no quedó huérfano
+  });
+});
+
+describe('Productos — grupo de opciones', () => {
+  let categoriaId, grupoId, adminToken;
+
+  beforeAll(async () => {
+    const login = await request(app).post('/api/v1/auth/login').send({ email: 'admin@restaurante.com', contrasena: process.env.ADMIN_PASSWORD || 'admin123' });
+    adminToken = login.body.datos.token;
+
+    const categoria = await Categoria.create({ nombre: 'Categoria Grupo Opciones Productos Test' });
+    categoriaId = categoria.id;
+
+    const grupo = await GrupoOpciones.create({ nombre: 'Término Productos Test' });
+    await Opcion.create({ grupo_opciones_id: grupo.id, nombre: 'Jugoso', orden: 1 });
+    grupoId = grupo.id;
+  });
+
+  afterAll(async () => {
+    await Producto.destroy({ where: { categoria_id: categoriaId } });
+    await Categoria.destroy({ where: { id: categoriaId } });
+    await Opcion.destroy({ where: { grupo_opciones_id: grupoId } });
+    await GrupoOpciones.destroy({ where: { id: grupoId } });
+  });
+
+  it('crea un producto con grupo_opciones_id y lo devuelve con sus opciones', async () => {
+    const crear = await request(app)
+      .post('/api/v1/productos')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ categoria_id: categoriaId, nombre: 'Picaña Test', precio: 85, grupo_opciones_id: grupoId });
+
+    expect(crear.status).toBe(201);
+    expect(crear.body.datos.grupo_opciones.nombre).toBe('Término Productos Test');
+    expect(crear.body.datos.grupo_opciones.opciones.map(o => o.nombre)).toEqual(['Jugoso']);
+  });
+
+  it('GET /productos incluye grupo_opciones cuando está asignado', async () => {
+    const res = await request(app).get('/api/v1/productos').set('Authorization', `Bearer ${adminToken}`);
+    const creado = res.body.datos.find(p => p.nombre === 'Picaña Test');
+    expect(creado.grupo_opciones.id).toBe(grupoId);
+  });
+
+  it('un producto sin grupo asignado devuelve grupo_opciones null', async () => {
+    const crear = await request(app)
+      .post('/api/v1/productos')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ categoria_id: categoriaId, nombre: 'Producto Sin Grupo Test', precio: 20 });
+
+    expect(crear.body.datos.grupo_opciones).toBeNull();
   });
 });
