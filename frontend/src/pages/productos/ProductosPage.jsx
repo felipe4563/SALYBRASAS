@@ -629,7 +629,11 @@ function TabOpciones({ puedeCrear, puedeEditar, puedeEliminar }) {
 
   const guardar = useMutation({
     mutationFn: ({ grupo, datos }) => grupo ? actualizarGrupoOpciones(grupo.id, datos) : crearGrupoOpciones(datos),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['grupos-opciones'] }); setModal(null); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['grupos-opciones'] });
+      qc.invalidateQueries({ queryKey: ['productos'] });
+      setModal(null);
+    },
   });
 
   const eliminar = useMutation({
