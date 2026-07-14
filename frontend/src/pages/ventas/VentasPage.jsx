@@ -68,7 +68,7 @@ export default function VentasPage() {
 
   const { data: productos = [], isLoading: cargandoProductos } = useQuery({
     queryKey: ['productos-pos', categoriaActiva],
-    queryFn: () => getProductos({ solo_vendibles: true, order_by: 'mas_vendido', ...(categoriaActiva ? { categoria_id: categoriaActiva } : {}) }),
+    queryFn: () => getProductos({ solo_vendibles: true, solo_disponibles: true, order_by: 'mas_vendido', ...(categoriaActiva ? { categoria_id: categoriaActiva } : {}) }),
   });
 
   useEffect(() => {

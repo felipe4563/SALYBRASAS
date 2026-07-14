@@ -51,7 +51,7 @@ export default function PedidoPage() {
   // Productos (por categoría si hay filtro)
   const { data: productos = [], isLoading: cargandoProductos } = useQuery({
     queryKey: ['productos-pos', categoriaActiva],
-    queryFn: () => getProductos({ solo_vendibles: true, order_by: 'mas_vendido', ...(categoriaActiva ? { categoria_id: categoriaActiva } : {}) }),
+    queryFn: () => getProductos({ solo_vendibles: true, solo_disponibles: true, order_by: 'mas_vendido', ...(categoriaActiva ? { categoria_id: categoriaActiva } : {}) }),
   });
 
   // Mapa producto_id → item del pedido

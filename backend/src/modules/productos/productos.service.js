@@ -29,7 +29,7 @@ async function eliminarCategoria(id) {
 
 // --- Productos ---
 
-async function listarProductos({ categoria_id, solo_vendibles, order_by } = {}, alcance) {
+async function listarProductos({ categoria_id, solo_vendibles, solo_disponibles, order_by } = {}, alcance) {
   const where = { activo: 1 };
   if (categoria_id) where.categoria_id = categoria_id;
   if (solo_vendibles === 'true' || solo_vendibles === true) where.es_vendible = 1;
@@ -47,7 +47,12 @@ async function listarProductos({ categoria_id, solo_vendibles, order_by } = {}, 
     order,
   });
 
-  return mezclarStockPorSucursal(productos, alcance);
+  const conStock = await mezclarStockPorSucursal(productos, alcance);
+
+  if (solo_disponibles === 'true' || solo_disponibles === true) {
+    return conStock.filter((p) => p.stock === null || p.stock > 0);
+  }
+  return conStock;
 }
 
 async function obtenerProducto(id, alcance) {
