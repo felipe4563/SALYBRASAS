@@ -10,7 +10,8 @@
     "seed": "node database/seeds/seed.js"
   },
   "jest": {
-    "testEnvironment": "node"
+    "testEnvironment": "node",
+    "setupFilesAfterEnv": ["<rootDir>/tests/setup.js"]
   },
   "keywords": [],
   "author": "",

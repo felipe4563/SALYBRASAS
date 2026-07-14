@@ -18,6 +18,8 @@ const Area = require('./Area');
 const Mesa = require('./Mesa');
 const Categoria = require('./Categoria');
 const Producto = require('./Producto');
+const GrupoOpciones = require('./GrupoOpciones');
+const Opcion = require('./Opcion');
 const Cliente = require('./Cliente');
 const SesionCaja = require('./SesionCaja');
 const Pedido = require('./Pedido');
@@ -59,6 +61,12 @@ Area.hasMany(Mesa, { foreignKey: 'area_id', as: 'mesas' });
 // Productos
 Producto.belongsTo(Categoria, { foreignKey: 'categoria_id', as: 'categoria' });
 Categoria.hasMany(Producto, { foreignKey: 'categoria_id', as: 'productos' });
+
+// Opciones de producto
+GrupoOpciones.hasMany(Opcion, { foreignKey: 'grupo_opciones_id', as: 'opciones' });
+Opcion.belongsTo(GrupoOpciones, { foreignKey: 'grupo_opciones_id', as: 'grupo' });
+Producto.belongsTo(GrupoOpciones, { foreignKey: 'grupo_opciones_id', as: 'grupo_opciones' });
+GrupoOpciones.hasMany(Producto, { foreignKey: 'grupo_opciones_id', as: 'productos' });
 
 // Pedidos
 Pedido.belongsTo(Mesa, { foreignKey: 'mesa_id', as: 'mesa' });
@@ -130,6 +138,7 @@ module.exports = {
   Rol, Permiso, Usuario,
   Area, Mesa,
   Categoria, Producto,
+  GrupoOpciones, Opcion,
   Cliente,
   SesionCaja, Pedido, DetallePedido,
   DetalleArqueo, Gasto, LibroCaja,
