@@ -296,8 +296,8 @@ export default function LibroCajaPage() {
     staleTime: 60_000,
   });
 
-  // toma la primera caja con sesión abierta como default del modal de movimiento
-  const cajaActiva = cajas.map(c => c.sesion_abierta).find(Boolean) ?? null;
+  // sesión abierta del usuario actual (no la primera que aparezca en la sucursal), default del modal de movimiento
+  const cajaActiva = cajas.map(c => c.sesion_abierta).find(s => s?.usuario_id === usuario?.id) ?? null;
 
   const { data: sesiones = [] } = useQuery({
     queryKey: ['sesiones-caja'],

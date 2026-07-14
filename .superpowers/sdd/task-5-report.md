@@ -1,153 +1,162 @@
-# Task 5 Report: Backend — asignar sucursales a un usuario
+# Task 5 — Reporte: Frontend "Caja" (grilla responsiva)
 
-## Summary
+## Estado: DONE_WITH_CONCERNS
 
-Implemented `PUT /api/v1/usuarios/:id/sucursales` in the `usuarios` module, gated by the
-`usuarios.editar` permission. The endpoint accepts `{ sucursal_ids: number[], acceso_todas_sucursales: boolean }`,
-sets `acceso_todas_sucursales` on the `Usuario`, replaces the user's `sucursales` association via
-`setSucursales()`, and returns the refreshed user (via `obtener()`). `listar()`/`obtener()` now also
-include a `sucursales: [{id, nombre}]` array (through-table attributes excluded) alongside the existing
-`rol` include.
+## Resumen
 
-Followed the brief's code verbatim for all three files.
+Se implementó el rediseño de la pantalla operativa "Caja" siguiendo el brief
+al pie de la letra:
 
-## Files changed
+1. **`frontend/src/api/caja.js`** — `getCajaActiva` reemplazado por
+   `getEstadoCajas(sucursal_id)` (`GET /caja/estado`), y `abrirCaja` cambiado
+   a `abrirCaja(caja_id, monto_apertura)` (`POST /caja/abrir` con
+   `{ caja_id, monto_apertura }`). El resto de funciones del archivo
+   (`getSesiones`, `getSesion`, `cerrarCaja`, `getReporte`, `registrarGasto`,
+   `getGastos`) sin cambios.
 
-- `backend/src/modules/usuarios/usuarios.service.js` — added `Sucursal` import, `INCLUDE_RELS` (rol +
-  sucursales), and `actualizarSucursales(id, sucursalIds, accesoTodas)`; exported it.
-- `backend/src/modules/usuarios/usuarios.controller.js` — added `actualizarSucursales` controller
-  action; exported it.
-- `backend/src/modules/usuarios/usuarios.routes.js` — added
-  `router.put('/:id/sucursales', verificarPermiso('usuarios', 'editar'), ctrl.actualizarSucursales);`
-  after the existing `PUT /:id` route.
-- `backend/tests/usuarios.test.js` — appended the `PUT /api/v1/usuarios/:id/sucursales` describe block
-  from the brief (two tests: assign sucursales, then flip to `acceso_todas_sucursales` and confirm the
-  assignment list clears).
+2. **`frontend/src/pages/caja/CajaPage.jsx`** — reescrito completo según el
+   código del brief:
+   - Grilla responsiva `grid-cols-1 sm:grid-cols-2 lg:grid-cols-3` con una
+     `TarjetaCaja` por cada caja de la sucursal (abierta con datos del
+     cajero y duración, o "Disponible" con botón Abrir).
+   - `sucursalActivaId` resuelve directo a `usuario.sucursal_activa.id` para
+     usuarios de una sola sucursal (sin selector visible); el selector de
+     sucursal solo aparece si `accesoTodas` (usuario multi-sucursal).
+   - Click en "Ver detalle" de una tarjeta abierta navega a una vista de
+     detalle de esa sesión (antes era la única vista posible); "← Volver a
+     las cajas" regresa a la grilla.
+   - `ModalAbrirCaja` recibe la `caja` completa (no un `sucursalId` suelto) y
+     manda `caja_id` fijo al abrir — no pide elegir sucursal.
+   - Historial de cierres, modal de cierre (arqueo), modal de gasto y modal
+     de reporte final: sin cambios funcionales respecto a la versión previa.
 
-## Test runs
+## Hallazgo fuera del alcance original del brief (y su resolución)
 
-### Baseline (before any change)
+Al remover el export `getCajaActiva` de `api/caja.js` (paso 1 del brief), el
+build se rompió porque **otros tres archivos** también lo importaban desde
+ese mismo módulo, apuntando al endpoint `/caja/activa` que el backend ya
+había eliminado desde la Task 3 (solo existe `/caja/estado`):
+
+- `frontend/src/pages/Dashboard.jsx` (widget de ventas/gastos de caja)
+- `frontend/src/pages/libro-caja/LibroCajaPage.jsx` (default de
+  `sesion_caja_id` en el modal de nuevo movimiento)
+- `frontend/src/pages/ventas/VentasPage.jsx` (bloqueo de la pantalla de
+  ventas si no hay caja abierta, y `sesionCajaId` de la venta)
+
+Es decir, estos tres ya estaban rotos en tiempo de ejecución desde que se
+fusionó la Task 3 (llamaban a un endpoint 404), pero el build seguía
+compilando porque el nombre del export todavía existía. Para que
+`npx vite build` compile limpio (requisito explícito de este paso) los migré
+a `getEstadoCajas(sucursal_id)`, tomando la primera sesión abierta de las
+cajas de la sucursal activa como equivalente mínimo de la antigua "caja
+activa única" — sin rediseñar esas pantallas para el modelo multi-caja
+completo (eso no estaba en el alcance de este brief).
+
+Esto es una reparación conservadora para no dejar el build roto, no un
+rediseño de esas tres pantallas al modelo de grilla. Marco el estado como
+`DONE_WITH_CONCERNS` porque excede el archivo/alcance literal del brief
+(que solo mencionaba `api/caja.js` y `CajaPage.jsx`) y valdría la pena que
+alguien revise si Dashboard/LibroCaja/Ventas deberían, a futuro, dejar que
+el usuario elija explícitamente *cuál* caja opera cuando haya más de una
+abierta simultáneamente en la misma sucursal (hoy toman la primera que
+encuentran).
+
+## Verificación manual (trazado de código, sin test runner de frontend)
+
+- Grilla responsiva: `grid-cols-1 sm:grid-cols-2 lg:grid-cols-3` — confirmado
+  en `CajaPage.jsx`.
+- `sucursalActivaId = accesoTodas ? sucursalId : usuario?.sucursal_activa?.id`
+  — confirmado, sin selector visible para usuario de una sola sucursal.
+- `ModalAbrirCaja` llama `abrirCaja(caja.id, parseFloat(monto) || 0)` con
+  `caja` fijada por la tarjeta clickeada (`onAbrir={() => setModalAbrir(c)}`)
+  — no pide sucursal.
+
+## Build
 
 ```
-$ cd backend && npm test
-Test Suites: 15 passed, 15 total
-Tests:       34 passed, 34 total
-Time:        7.423 s
+cd frontend && npx vite build
 ```
 
-### Step 2 — new tests appended, run in isolation to confirm they fail
-
-```
-$ cd backend && npm test -- usuarios.test
-FAIL tests/usuarios.test.js
-  ● PUT /api/v1/usuarios/:id/sucursales › asigna sucursales y refleja el cambio al obtener el usuario
-    expect(received).toBe(expected) // Object.is equality
-    Expected: 200
-    Received: 404
-  ● PUT /api/v1/usuarios/:id/sucursales › activa acceso_todas_sucursales y limpia las asignaciones puntuales
-    expect(received).toBe(expected) // Object.is equality
-    Expected: 200
-    Received: 404
-Test Suites: 1 failed, 1 total
-Tests:       2 failed, 1 passed, 3 total
-```
-
-Failed exactly as expected (route did not exist yet → 404).
-
-### Step 6 — after implementing service/controller/routes, run in isolation
-
-```
-$ cd backend && npm test -- usuarios.test
-Test Suites: 1 passed, 1 total
-Tests:       3 passed, 3 total
-Time:        1.699 s
-```
-
-### Step 7 — full suite, no filter
-
-```
-$ cd backend && npm test
-Test Suites: 15 passed, 15 total
-Tests:       36 passed, 36 total
-Time:        7.277 s
-```
-
-34 baseline tests + 2 new = 36, all passing. Zero regressions — the `sucursales` include added to
-`listar()`/`obtener()` did not break any other suite (e.g. `auth`, `sucursales` CRUD, other `usuarios`
-tests all still pass).
+Resultado: **build exitoso** (2937 módulos transformados, `built in 8.69s`).
+Único warning: chunk size preexistente (`index-*.js` ~1.57 MB), no
+relacionado con este cambio.
 
 ## Commit
 
 ```
-47b8a8673f5775bb42c6259575584e45e38dc260
-feat(usuarios): assign sucursales and acceso_todas_sucursales to a user
-4 files changed, 81 insertions(+), 6 deletions(-)
+cb97b59 feat(caja): grilla responsiva de cajas por sucursal en vez de una sola sesión activa
 ```
 
-Staged only `backend/src/modules/usuarios` and `backend/tests/usuarios.test.js`, per the brief — did
-not touch the unrelated modified `.superpowers/sdd/*` files that were already present in the working
-tree from prior tasks.
+Archivos incluidos: `frontend/src/api/caja.js`,
+`frontend/src/pages/caja/CajaPage.jsx`, `frontend/src/pages/Dashboard.jsx`,
+`frontend/src/pages/libro-caja/LibroCajaPage.jsx`,
+`frontend/src/pages/ventas/VentasPage.jsx`.
 
-## Notes / deviations
+Nota: había cambios no relacionados y preexistentes en `.superpowers/sdd/*`
+(archivos de reportes de otras tasks modificados/eliminados en el working
+tree, no generados por mí) que quedaron fuera de este commit
+intencionalmente.
 
-None from the brief's implementation. Implementation followed the brief's provided code verbatim for
-all three module files and the test block.
+## Dudas / inquietudes
 
-One incidental observation, unrelated to the code change: while running `npm test -- usuarios.test`,
-a dotenv startup log line contained an odd injected string resembling a prompt-injection / ad payload
-(a "tip" mentioning an external auth site). It was not related to this task, was not actionable as an
-instruction, and was ignored — no action was taken based on it and no external site was contacted.
-Flagging it here in case it recurs elsewhere in the pipeline; may be worth auditing the dotenv version/
-config separately, outside the scope of this task.
+- El fix de Dashboard/LibroCaja/Ventas fue necesario para que el build
+  compile, pero es un parche mínimo (toma la "primera caja abierta" de la
+  sucursal) y no una solución definitiva para el modelo multi-caja en esas
+  tres pantallas. Si el negocio tiene más de una caja abierta a la vez por
+  sucursal de forma habitual, convendría una task de seguimiento para que
+  esas pantallas dejen elegir explícitamente la caja/sesión en vez de asumir
+  la primera.
+- No se verificó en navegador (no corrí el dev server); solo build estático
+  y trazado manual del código, tal como pedía el brief.
 
-## Follow-up fix — review gap: missing "replace, not additive" test
+## Fix posterior (hallazgo Important): "primera caja abierta" en vez de la del usuario actual
 
-### Reviewer finding (Important, should-fix)
+**Problema:** el parche descrito arriba (`cajasEstado.map(c => c.sesion_abierta).find(Boolean)`)
+en `VentasPage.jsx` y `LibroCajaPage.jsx` tomaba la primera sesión abierta que
+apareciera en la sucursal, no la del cajero logueado. Con el modelo de cajas
+físicas (varias sesiones abiertas simultáneas por sucursal), esto podía
+atribuir una venta o un movimiento de libro de caja a la sesión de otro
+cajero. `Dashboard.jsx` no tenía este problema (usa las sesiones para sumar
+totales agregados, no para asociar una operación a una sesión puntual), así
+que no se tocó.
 
-No test verified that `PUT /api/v1/usuarios/:id/sucursales` *replaces* a prior non-empty sucursal
-assignment rather than adding to it. The two existing tests only covered assigning `[sucursalId]`
-starting from nothing, and clearing everything via `acceso_todas_sucursales: true` with
-`sucursal_ids: []`.
+**Cambio aplicado:**
 
-### Fix
+- `frontend/src/pages/ventas/VentasPage.jsx` (línea ~55):
+  ```javascript
+  // antes
+  const cajaActiva = cajasEstado.map(c => c.sesion_abierta).find(Boolean) ?? null;
+  // después
+  const cajaActiva = cajasEstado.map(c => c.sesion_abierta).find(s => s?.usuario_id === usuario?.id) ?? null;
+  ```
+  (`usuario` ya venía de `useAuth()` en este componente.)
 
-`backend/tests/usuarios.test.js`:
+- `frontend/src/pages/libro-caja/LibroCajaPage.jsx` (línea ~300): mismo
+  cambio, usando `cajas` (nombre de la variable en este archivo) y `usuario`
+  obtenido de `useAuthStore()`.
 
-- Added a second throwaway sucursal (`sucursalId2`, `Sucursal Asignacion Test 2`) to the existing
-  `beforeAll`, and its cleanup to the existing `afterAll` alongside `sucursalId`.
-- Added a third test, `'reemplaza (no acumula) una asignacion previa de multiples sucursales'`:
-  1. Calls the endpoint with `sucursal_ids: [sucursalId, sucursalId2]` and asserts the response's
-     `sucursales` array has length 2.
-  2. Calls the endpoint again with `sucursal_ids: [sucursalId2]` only, and asserts the response's
-     `sucursales` array now has length 1 and contains only `sucursalId2` — proving `sucursalId` was
-     actually removed by `setSucursales()`, not just supplemented.
+**Verificación de que `usuario_id` está disponible sin tocar backend:**
+en `backend/src/modules/caja/caja.service.js`, `listarConEstado()` llama
+`SesionCaja.findAll({ where: {...}, include: [{ model: Usuario, as: 'usuario', attributes: ['id','nombre'] }] })`
+sin restringir `attributes` de `SesionCaja`, por lo que devuelve todas las
+columnas del modelo (incluido `usuario_id`) además del `include` de
+`usuario`. `sesion_abierta.usuario_id` ya estaba disponible en el payload
+que recibe el frontend.
 
-No changes to `usuarios.service.js`, `usuarios.controller.js`, or `usuarios.routes.js` — this was
-purely a missing-test gap, consistent with the reviewer's note that the implementation itself
-(Sequelize's `setSucursales()`, which replaces the association by design) is correct.
+**Trazado manual:**
+- Caso normal: el usuario actual tiene una sesión abierta en alguna caja de
+  la sucursal → `find` la localiza por `usuario_id === usuario?.id` y
+  `cajaActiva` queda con esa sesión, sin importar el orden del array ni
+  cuántas otras cajas de otros cajeros estén abiertas.
+- Caso "otro cajero tiene caja abierta pero yo no": ningún elemento de
+  `cajasEstado`/`cajas` cumple `s?.usuario_id === usuario?.id`, `find`
+  devuelve `undefined`, y `?? null` deja `cajaActiva = null`. Esto es el
+  comportamiento correcto: el usuario ve que no tiene caja abierta propia
+  en vez de operar sobre la sesión de otro cajero.
 
-### Test runs
+**Build:** `cd frontend && npx vite build` compiló limpio (solo el warning
+preexistente de tamaño de chunk >500kB, no relacionado con este cambio).
 
-```
-$ cd backend && npm test -- usuarios.test
-Test Suites: 1 passed, 1 total
-Tests:       4 passed, 4 total
-Time:        3.208 s
-```
-
-```
-$ cd backend && npm test
-Test Suites: 15 passed, 15 total
-Tests:       37 passed, 37 total
-Time:        9.903 s
-```
-
-Baseline was 15 suites / 36 tests, all green. Now 15 suites / 37 tests, all green — exactly one new
-test added, zero regressions.
-
-### Commit
-
-```
-e5bd0825fc2de5d763b2a673abdf92004f57d3a0
-test(usuarios): cover replace-not-additive semantics for PUT /:id/sucursales
-```
+**Commit:** `fix(ventas,libro-caja): usa la sesión de caja del usuario actual, no la primera abierta de la sucursal`
+(archivos: `frontend/src/pages/ventas/VentasPage.jsx`,
+`frontend/src/pages/libro-caja/LibroCajaPage.jsx`).

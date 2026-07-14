@@ -51,8 +51,8 @@ export default function VentasPage() {
     enabled: puedeVer && !!usuario?.sucursal_activa?.id,
   });
 
-  // primera caja con sesión abierta de la sucursal, usada como caja operativa de la venta
-  const cajaActiva = cajasEstado.map(c => c.sesion_abierta).find(Boolean) ?? null;
+  // sesión abierta del usuario actual (no la primera que aparezca en la sucursal), usada como caja operativa de la venta
+  const cajaActiva = cajasEstado.map(c => c.sesion_abierta).find(s => s?.usuario_id === usuario?.id) ?? null;
 
   const { data: pedidosActivos = [] } = useQuery({
     queryKey: ['ventas', 'activos'],
