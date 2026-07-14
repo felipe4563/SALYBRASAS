@@ -1,3 +1,9 @@
+jest.mock('../src/integrations/codepay/codepay.client', () => ({
+  generarQr: jest.fn(),
+  consultarEstado: jest.fn(),
+  verificarFirmaWebhook: jest.fn(),
+}));
+
 const request = require('supertest');
 const app = require('../src/app');
 
@@ -13,7 +19,7 @@ describe('Ventas API', () => {
   });
 });
 
-const { Sucursal, Area, Mesa, Categoria, Producto, ProductoStockSucursal, Usuario, Rol, SesionCaja, Pedido, RegistroInventario, LibroCaja, Caja } = require('../src/models');
+const { Sucursal, Area, Mesa, Categoria, Producto, ProductoStockSucursal, Usuario, Rol, SesionCaja, Pedido, RegistroInventario, LibroCaja, Caja, PagoQr } = require('../src/models');
 const bcrypt = require('bcryptjs');
 
 describe('Ventas por sucursal', () => {
@@ -150,6 +156,180 @@ describe('Ventas - aislamiento entre sucursales (acceso por id)', () => {
     const res = await request(app)
       .post(`/api/v1/ventas/${pedidoAId}/cancelar`)
       .set('Authorization', `Bearer ${tokenC}`);
+    expect(res.status).toBe(404);
+  });
+});
+
+const codepayClientMock = require('../src/integrations/codepay/codepay.client');
+
+describe('Ventas — cobro con QR (CodePay)', () => {
+  let sucursalId, areaId, mesaId, usuarioId, cajaId, sesionId, productoId, token;
+
+  beforeAll(async () => {
+    const sucursal = await Sucursal.create({ nombre: 'Sucursal PagoQr Ventas Test' });
+    sucursalId = sucursal.id;
+    const area = await Area.create({ nombre: 'Area PagoQr Ventas Test', sucursal_id: sucursalId });
+    areaId = area.id;
+    const mesa = await Mesa.create({ area_id: areaId, nombre: 'Mesa PagoQr Ventas Test' });
+    mesaId = mesa.id;
+    const categoria = await Categoria.create({ nombre: 'Categoria PagoQr Ventas Test' });
+    const producto = await Producto.create({ categoria_id: categoria.id, nombre: 'Producto PagoQr Ventas Test', precio: 5, stock: 0 });
+    productoId = producto.id;
+    await ProductoStockSucursal.create({ producto_id: productoId, sucursal_id: sucursalId, stock: 10 });
+
+    const rol = await Rol.findOne({ where: { nombre: 'Cajero' } });
+    const hash = await bcrypt.hash('clave123', 10);
+    const usuario = await Usuario.create({ rol_id: rol.id, nombre: 'PagoQr Ventas Test', email: 'pagoqr-ventas-test@restaurante.com', contrasena: hash });
+    usuarioId = usuario.id;
+    await usuario.addSucursal(sucursal);
+
+    const login = await request(app).post('/api/v1/auth/login').send({ email: 'pagoqr-ventas-test@restaurante.com', contrasena: 'clave123' });
+    token = login.body.datos.token;
+
+    const caja = await Caja.create({ sucursal_id: sucursalId, nombre: 'Caja PagoQr Ventas Test' });
+    cajaId = caja.id;
+    const sesion = await SesionCaja.create({ usuario_id: usuarioId, sucursal_id: sucursalId, caja_id: cajaId, monto_apertura: 0 });
+    sesionId = sesion.id;
+  });
+
+  afterEach(() => { jest.clearAllMocks(); });
+
+  afterAll(async () => {
+    await PagoQr.destroy({ where: { sucursal_id: sucursalId } });
+    await Pedido.destroy({ where: { usuario_id: usuarioId } });
+    await LibroCaja.destroy({ where: { usuario_id: usuarioId } });
+    await SesionCaja.destroy({ where: { id: sesionId } });
+    await Caja.destroy({ where: { id: cajaId } });
+    await ProductoStockSucursal.destroy({ where: { producto_id: productoId } });
+    await Producto.destroy({ where: { id: productoId } });
+    await Usuario.destroy({ where: { id: usuarioId } });
+    await Mesa.destroy({ where: { id: mesaId } });
+    await Area.destroy({ where: { id: areaId } });
+    await Sucursal.destroy({ where: { id: sucursalId } });
+  });
+
+  it('crearCompleta con metodo_pago=qr deja el pedido en pendiente_pago sin tocar stock ni libro de caja', async () => {
+    codepayClientMock.generarQr.mockResolvedValue({
+      qr_code: 'data:image/png;base64,abc', tx_id: 'tx_qr_1', amount: 10.35, net_amount: 10, commission_amount: 0.35,
+    });
+
+    const res = await request(app)
+      .post('/api/v1/ventas/completa')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        tipo: 'llevar', metodo_pago: 'qr', sesion_caja_id: sesionId,
+        items: [{ producto_id: productoId, cantidad: 2 }],
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.datos.pago_qr.tx_id).toBe('tx_qr_1');
+    expect(res.body.datos.pedido.estado).toBe('pendiente_pago');
+
+    const fila = await ProductoStockSucursal.findOne({ where: { producto_id: productoId, sucursal_id: sucursalId } });
+    expect(fila.stock).toBe(10); // sin cambios todavía
+
+    const entradasLibro = await LibroCaja.count({ where: { referencia_id: res.body.datos.pedido.id } });
+    expect(entradasLibro).toBe(0);
+  });
+
+  it('confirmación exitosa por polling: completa la venta, descuenta stock y registra el ingreso', async () => {
+    codepayClientMock.generarQr.mockResolvedValue({
+      qr_code: 'data:image/png;base64,abc', tx_id: 'tx_qr_2', amount: 10.35, net_amount: 10, commission_amount: 0.35,
+    });
+
+    const creado = await request(app)
+      .post('/api/v1/ventas/completa')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        tipo: 'llevar', metodo_pago: 'qr', sesion_caja_id: sesionId,
+        items: [{ producto_id: productoId, cantidad: 1 }],
+      });
+    const pedidoId = creado.body.datos.pedido.id;
+
+    codepayClientMock.consultarEstado.mockResolvedValue({ status: 'completed', tx_id: 'tx_qr_2', order_id: `pedido_${pedidoId}_1` });
+
+    const res = await request(app)
+      .get(`/api/v1/ventas/${pedidoId}/pago-qr/estado`)
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.datos.estado).toBe('completado');
+    expect(res.body.datos.pedido.estado).toBe('completado');
+
+    const entradasLibro = await LibroCaja.count({ where: { referencia_id: pedidoId } });
+    expect(entradasLibro).toBe(1);
+  });
+
+  it('confirmación fallida por polling: el pedido vuelve a pendiente y puede reintentarse', async () => {
+    codepayClientMock.generarQr.mockResolvedValue({
+      qr_code: 'data:image/png;base64,abc', tx_id: 'tx_qr_3', amount: 10.35, net_amount: 10, commission_amount: 0.35,
+    });
+
+    const creado = await request(app)
+      .post('/api/v1/ventas/completa')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        tipo: 'llevar', metodo_pago: 'qr', sesion_caja_id: sesionId,
+        items: [{ producto_id: productoId, cantidad: 1 }],
+      });
+    const pedidoId = creado.body.datos.pedido.id;
+
+    codepayClientMock.consultarEstado.mockResolvedValue({ status: 'failed', tx_id: 'tx_qr_3', order_id: `pedido_${pedidoId}_1` });
+
+    const res = await request(app)
+      .get(`/api/v1/ventas/${pedidoId}/pago-qr/estado`)
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.datos.estado).toBe('fallido');
+    expect(res.body.datos.pedido.estado).toBe('pendiente');
+
+    // Reintento: nuevo order_id (segundo intento), pedido vuelve a pendiente_pago
+    codepayClientMock.generarQr.mockResolvedValue({
+      qr_code: 'data:image/png;base64,def', tx_id: 'tx_qr_3b', amount: 10.35, net_amount: 10, commission_amount: 0.35,
+    });
+    const reintento = await request(app)
+      .post(`/api/v1/ventas/${pedidoId}/cobrar`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ metodo_pago: 'qr' });
+
+    expect(reintento.status).toBe(200);
+    expect(reintento.body.datos.pago_qr.tx_id).toBe('tx_qr_3b');
+    expect(codepayClientMock.generarQr).toHaveBeenCalledWith(expect.objectContaining({ order_id: `pedido_${pedidoId}_2` }));
+  });
+
+  it('cancelación manual: revierte el pedido a su estado previo', async () => {
+    codepayClientMock.generarQr.mockResolvedValue({
+      qr_code: 'data:image/png;base64,abc', tx_id: 'tx_qr_4', amount: 10.35, net_amount: 10, commission_amount: 0.35,
+    });
+
+    const creado = await request(app)
+      .post('/api/v1/ventas/completa')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        tipo: 'llevar', metodo_pago: 'qr', sesion_caja_id: sesionId,
+        items: [{ producto_id: productoId, cantidad: 1 }],
+      });
+    const pedidoId = creado.body.datos.pedido.id;
+
+    const res = await request(app)
+      .post(`/api/v1/ventas/${pedidoId}/pago-qr/cancelar`)
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.datos.estado).toBe('pendiente');
+  });
+
+  it('GET pago-qr/estado sin ningún pago pendiente → 404', async () => {
+    const creado = await request(app)
+      .post('/api/v1/ventas')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ mesa_id: mesaId, tipo: 'mesa', sesion_caja_id: sesionId });
+
+    const res = await request(app)
+      .get(`/api/v1/ventas/${creado.body.datos.id}/pago-qr/estado`)
+      .set('Authorization', `Bearer ${token}`);
+
     expect(res.status).toBe(404);
   });
 });
