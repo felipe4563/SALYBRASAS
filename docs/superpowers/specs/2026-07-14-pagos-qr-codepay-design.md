@@ -16,16 +16,17 @@ sucursal).
 ## Credenciales y entorno
 
 ```bash
-# backend/.env (gitignored)
+# backend/.env (gitignored — nunca commitear valores reales aquí ni en ningún
+# archivo versionado; los valores reales los tiene el usuario)
 CODEPAY_SANDBOX=true                 # true en desarrollo, false en producción
 CODEPAY_API_URL=https://payapi.codewave.com.bo/api
 
-CODEPAY_PUBLIC_KEY=pk_salybrasas_zjj1fepma3
-CODEPAY_SECRET_KEY=sk_salybrasas_4rohnjfliwhi1gtnwqyv
-CODEPAY_NOTIFICATION_SECRET=whsec_76if6m0x3lm4aisl8gku8
+CODEPAY_PUBLIC_KEY=
+CODEPAY_SECRET_KEY=
+CODEPAY_NOTIFICATION_SECRET=
 
-CODEPAY_SANDBOX_PUBLIC_KEY=pk_test_salybrasas_ugciydd
-CODEPAY_SANDBOX_SECRET_KEY=sk_test_salybrasas_7vmabl8csbrn1qelbmk
+CODEPAY_SANDBOX_PUBLIC_KEY=
+CODEPAY_SANDBOX_SECRET_KEY=
 ```
 
 El cliente CodePay resuelve en tiempo de ejecución qué par de llaves usar
