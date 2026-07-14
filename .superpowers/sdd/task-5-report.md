@@ -55,3 +55,31 @@ Only these 4 files were staged/committed; unrelated pending changes under `.supe
 ## Dudas / inquietudes
 
 - Not verified in a real browser against a live CodePay sandbox (no dev server run); verification was static build + manual code trace, per the constraints given for this task.
+
+## Fix: stranded pendiente_pago order on modal dismiss
+
+**Bug (found in final whole-branch review):** `ModalPagoQr.jsx` passed `onClose={onClose}` directly to the shared `Modal` component. `Modal`'s backdrop-click and "X" button call `onClose` unconditionally, bypassing the "Cancelar cobro QR" button's `cancelar.mutate()` call. If a cashier dismissed the QR modal that way while `estado === 'pendiente'`, the modal unmounted (stopping the `consultarEstadoPagoQr` poll) with the backend `Pedido` left stuck in `'pendiente_pago'`. Neither `cobrar()` (needs `'pendiente'`/`'listo'`) nor `cancelar()` (needs `'pendiente'`) could recover it from the UI afterward — both would 409 — and for a `mesa` order the table stayed permanently unusable until a manual DB fix.
+
+**Fix:** Added a single `handleClose` function in `ModalPagoQr.jsx`:
+
+```jsx
+const handleClose = () => {
+  if (estado === 'pendiente') {
+    if (!cancelar.isPending) cancelar.mutate();
+    return;
+  }
+  onClose();
+};
+```
+
+- `<Modal titulo="Cobro por QR" onClose={handleClose} ancho="max-w-sm">` — backdrop click and the "X" button (both go through `Modal`'s `onClose` prop) now route through `handleClose`.
+- The "Cancelar cobro QR" button's `onClick` now calls `handleClose` instead of `cancelar.mutate()` directly, so there is exactly one dismissal path while pending.
+- The `cancelar` mutation itself is unchanged — `onSuccess: () => onClose()` still closes the modal only after the server confirms the pendiente_pago pedido was reverted.
+- The `(estado === 'fallido' || estado === 'expirado')` branch's "Cambiar método de pago" button still calls `onClose` directly (untouched), since by that point the backend has already reverted the pedido via `_revertirPagoQr` — there is nothing left to cancel.
+
+**Manual trace:**
+1. `estado === 'pendiente'`, dismiss via backdrop or "X" -> `Modal` invokes `onClose` prop, which is now `handleClose` -> `estado === 'pendiente'` branch taken -> `cancelar.mutate()` fires `cancelarPagoQr(pedidoId)` -> only on that request's success does `cancelar`'s `onSuccess` call the real `onClose()`, closing the modal. No stranded `pendiente_pago` pedido.
+2. `estado === 'fallido'` or `'expirado'`, dismiss via backdrop or "X" -> `handleClose` runs, `estado !== 'pendiente'` -> falls through directly to `onClose()`, closing immediately with no `cancelarPagoQr` call — avoids a spurious cancel against a pedido that was already reverted server-side (which would 404/409 since there's no longer a live `PagoQr` row in `'pendiente'`).
+3. `estado === 'pendiente'`, click "Cancelar cobro QR" -> `onClick={handleClose}` -> same `estado === 'pendiente'` branch as case 1 -> `cancelar.mutate()` -> identical behavior to before the fix, now just routed through `handleClose`. The button is also `disabled={cancelar.isPending}` as before, preventing double-submission.
+
+Verified with `cd frontend && npx vite build` — build succeeded (no errors, only the pre-existing large-chunk warning).

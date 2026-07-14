@@ -29,6 +29,14 @@ export default function ModalPagoQr({ pedidoId, pagoQr, onClose, onCompletado, o
 
   const estado = estadoQuery.data?.estado ?? 'pendiente';
 
+  const handleClose = () => {
+    if (estado === 'pendiente') {
+      if (!cancelar.isPending) cancelar.mutate();
+      return;
+    }
+    onClose();
+  };
+
   useEffect(() => {
     if (estado === 'completado' && estadoQuery.data?.pedido) {
       onCompletado(estadoQuery.data.pedido);
@@ -40,7 +48,7 @@ export default function ModalPagoQr({ pedidoId, pagoQr, onClose, onCompletado, o
   const segundos = Math.floor((restanteMs % 60000) / 1000);
 
   return (
-    <Modal titulo="Cobro por QR" onClose={onClose} ancho="max-w-sm">
+    <Modal titulo="Cobro por QR" onClose={handleClose} ancho="max-w-sm">
       <div className="space-y-4 text-center">
         {estado === 'pendiente' && (
           <>
@@ -59,7 +67,7 @@ export default function ModalPagoQr({ pedidoId, pagoQr, onClose, onCompletado, o
               </p>
             </div>
             <button
-              onClick={() => cancelar.mutate()}
+              onClick={handleClose}
               disabled={cancelar.isPending}
               className="px-4 py-2 rounded-xl text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors disabled:opacity-60"
             >
