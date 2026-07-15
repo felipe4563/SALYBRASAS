@@ -231,8 +231,17 @@ async function consultarEstadoPagoQr(pedido_id, alcance) {
   if (!pedido) throw Object.assign(new Error('Pedido no encontrado'), { status: 404 });
   _verificarAlcance(pedido, alcance);
 
-  const pagoQr = await PagoQr.findOne({ where: { pedido_id, estado: 'pendiente' }, order: [['id', 'DESC']] });
-  if (!pagoQr) throw Object.assign(new Error('No hay un pago QR pendiente para este pedido'), { status: 404 });
+  const pagoQr = await PagoQr.findOne({ where: { pedido_id }, order: [['id', 'DESC']] });
+  if (!pagoQr) throw Object.assign(new Error('No hay un pago QR para este pedido'), { status: 404 });
+
+  // El webhook de CodePay puede confirmar/revertir el pago entre un poll y
+  // el siguiente — si ya se resolvió (por el webhook), se devuelve directo
+  // en vez de volver a filtrar por estado 'pendiente' (que ya no matchea y
+  // antes producía un 404 acá, dejando el modal de cobro esperando
+  // indefinidamente aunque el pago ya estuviera confirmado).
+  if (pagoQr.estado !== 'pendiente') {
+    return { estado: pagoQr.estado, pedido: await obtener(pedido_id) };
+  }
 
   if (new Date() > pagoQr.expires_at) {
     await _revertirPagoQr(pagoQr, 'expirado');

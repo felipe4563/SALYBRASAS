@@ -161,6 +161,7 @@ describe('Ventas - aislamiento entre sucursales (acceso por id)', () => {
 });
 
 const codepayClientMock = require('../src/integrations/codepay/codepay.client');
+const ventasService = require('../src/modules/ventas/ventas.service');
 
 describe('Ventas — cobro con QR (CodePay)', () => {
   let sucursalId, areaId, mesaId, usuarioId, cajaId, sesionId, productoId, token;
@@ -258,6 +259,37 @@ describe('Ventas — cobro con QR (CodePay)', () => {
 
     const entradasLibro = await LibroCaja.count({ where: { referencia_id: pedidoId } });
     expect(entradasLibro).toBe(1);
+  });
+
+  it('si el webhook confirma antes que el siguiente polling, el polling sigue viendo el estado (no 404)', async () => {
+    codepayClientMock.generarQr.mockResolvedValue({
+      qr_code: 'data:image/png;base64,abc', tx_id: 'tx_qr_webhook_primero', amount: 10.35, net_amount: 10, commission_amount: 0.35,
+    });
+
+    const creado = await request(app)
+      .post('/api/v1/ventas/completa')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        tipo: 'llevar', metodo_pago: 'qr', sesion_caja_id: sesionId,
+        items: [{ producto_id: productoId, cantidad: 1 }],
+      });
+    const pedidoId = creado.body.datos.pedido.id;
+
+    // El webhook llega y confirma el pago ANTES de que el frontend vuelva a
+    // consultar el estado por polling — el PagoQr ya no está 'pendiente'.
+    await ventasService.procesarWebhookPagoQr({ event: 'payment.completed', order_id: `pedido_${pedidoId}_1` });
+
+    const res = await request(app)
+      .get(`/api/v1/ventas/${pedidoId}/pago-qr/estado`)
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.datos.estado).toBe('completado');
+    expect(res.body.datos.pedido.estado).toBe('completado');
+
+    // No debe haber vuelto a llamar a CodePay para "reconfirmar" un pago que
+    // el webhook ya resolvió.
+    expect(codepayClientMock.consultarEstado).not.toHaveBeenCalled();
   });
 
   it('dos confirmaciones concurrentes del mismo pago solo finalizan la venta una vez', async () => {
