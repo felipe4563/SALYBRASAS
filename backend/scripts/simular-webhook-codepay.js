@@ -22,7 +22,9 @@ async function main() {
 
   const body = { event: evento, order_id: pagoQr.order_id, tx_id: pagoQr.tx_id };
   const raw = JSON.stringify(body);
-  const firma = createHmac('sha256', process.env.CODEPAY_NOTIFICATION_SECRET).update(raw).digest('hex');
+  const timestamp = Math.floor(Date.now() / 1000);
+  const hmac = createHmac('sha256', process.env.CODEPAY_NOTIFICATION_SECRET).update(`${timestamp}.${raw}`).digest('hex');
+  const firma = `t=${timestamp},v1=${hmac}`;
 
   const res = await fetch(`http://localhost:${process.env.PORT || 3001}/webhooks/codepay`, {
     method: 'POST',

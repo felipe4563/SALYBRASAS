@@ -55,18 +55,29 @@ async function consultarEstado(tx_id) {
   return res.json();
 }
 
+// Formato real de X-Codepay-Signature: "t={timestamp},v1={hmac_hex}" —
+// el HMAC se calcula sobre "{timestamp}.{rawBody}", no sobre el body solo.
 function verificarFirmaWebhook(rawBody, signatureHeader) {
   if (!signatureHeader || !rawBody) return false;
 
-  const esperada = createHmac('sha256', process.env.CODEPAY_NOTIFICATION_SECRET).update(rawBody).digest('hex');
+  const partes = Object.fromEntries(
+    signatureHeader.split(',').map((parte) => parte.split('=').map((s) => s.trim()))
+  );
+  const timestamp = partes.t;
+  const firmaRecibidaHex = partes.v1;
+  if (!timestamp || !firmaRecibidaHex) return false;
 
-  let recibida;
+  const esperada = createHmac('sha256', process.env.CODEPAY_NOTIFICATION_SECRET)
+    .update(`${timestamp}.${rawBody}`)
+    .digest('hex');
+
+  let recibida, calculada;
   try {
-    recibida = Buffer.from(signatureHeader, 'hex');
+    recibida = Buffer.from(firmaRecibidaHex, 'hex');
+    calculada = Buffer.from(esperada, 'hex');
   } catch {
     return false;
   }
-  const calculada = Buffer.from(esperada, 'hex');
   if (recibida.length !== calculada.length) return false;
   return timingSafeEqual(recibida, calculada);
 }

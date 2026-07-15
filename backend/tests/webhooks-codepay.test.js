@@ -9,7 +9,9 @@ const {
 
 function firmar(bodyObj) {
   const raw = JSON.stringify(bodyObj);
-  return createHmac('sha256', process.env.CODEPAY_NOTIFICATION_SECRET).update(raw).digest('hex');
+  const timestamp = Math.floor(Date.now() / 1000);
+  const hmac = createHmac('sha256', process.env.CODEPAY_NOTIFICATION_SECRET).update(`${timestamp}.${raw}`).digest('hex');
+  return `t=${timestamp},v1=${hmac}`;
 }
 
 describe('POST /webhooks/codepay', () => {

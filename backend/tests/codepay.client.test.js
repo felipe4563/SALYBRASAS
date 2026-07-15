@@ -74,13 +74,20 @@ describe('codepayClient.consultarEstado', () => {
 });
 
 describe('codepayClient.verificarFirmaWebhook', () => {
-  it('acepta una firma válida', () => {
+  it('acepta una firma válida en formato t=...,v1=...', () => {
     const body = Buffer.from(JSON.stringify({ event: 'payment.completed', order_id: 'pedido_1_1' }));
-    const firma = createHmac('sha256', 'whsec_test_x').update(body).digest('hex');
-    expect(verificarFirmaWebhook(body, firma)).toBe(true);
+    const timestamp = Math.floor(Date.now() / 1000);
+    const hmac = createHmac('sha256', 'whsec_test_x').update(`${timestamp}.${body}`).digest('hex');
+    expect(verificarFirmaWebhook(body, `t=${timestamp},v1=${hmac}`)).toBe(true);
   });
 
-  it('rechaza una firma inválida', () => {
+  it('rechaza una firma con hmac incorrecto', () => {
+    const body = Buffer.from(JSON.stringify({ event: 'payment.completed', order_id: 'pedido_1_1' }));
+    const timestamp = Math.floor(Date.now() / 1000);
+    expect(verificarFirmaWebhook(body, `t=${timestamp},v1=00112233`)).toBe(false);
+  });
+
+  it('rechaza un header sin el formato t=...,v1=...', () => {
     const body = Buffer.from(JSON.stringify({ event: 'payment.completed', order_id: 'pedido_1_1' }));
     expect(verificarFirmaWebhook(body, 'firma_incorrecta_pero_hex_00112233')).toBe(false);
   });
