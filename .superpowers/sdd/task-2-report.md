@@ -1,94 +1,82 @@
-# Task 2 — Reporte: Cliente CodePay (firma JWT, generar QR, consultar estado, verificar webhook)
+# Task 2 Report: CRUD de grupos de opciones
 
-## Estado: DONE
+## Status: DONE
 
-## Resumen
+## Summary
+Implemented the complete CRUD HTTP API for managing option groups (`/api/v1/grupos-opciones`) following the specification in task-2-brief.md exactly. All 5 tests pass successfully.
 
-Se implementó el cliente HTTP aislado para integración con CodePay, que centraliza todos los puntos de contacto con la pasarela QR. Incluye firma JWT HS256, generación de códigos QR, consulta de estado de transacciones, y verificación de firmas de webhooks. Cero dependencias externas (usa `crypto` y `fetch` global), cero acoplamientos con Express, Sequelize, u otros módulos backend.
+## Implementation Details
 
-## Archivos creados
+### Changes Made
 
-- `backend/src/integrations/codepay/codepay.client.js` — Cliente con 4 funciones exportadas:
-  - `firmarToken(payload, secretKey)` — Firma JWT manual (HS256) con header, payload y signature en base64url.
-  - `generarQr({ order_id, amount, description, expires_at, currency })` — POST a `/v1/payments/qr` de CodePay; retorna `{ qr_code, tx_id, amount, net_amount, commission_amount, expires_at, order_id }`.
-  - `consultarEstado(tx_id)` — GET a `/checkout/status/{tx_id}`; retorna estado actual `{ status, tx_id, order_id }`.
-  - `verificarFirmaWebhook(rawBody, signatureHeader)` — HMAC-SHA256 timing-safe verificación de firmas de webhook usando `CODEPAY_NOTIFICATION_SECRET`.
-  - Función privada `_credenciales()` — Selecciona claves sandbox o producción según `CODEPAY_SANDBOX`.
+#### Step 1: Service Layer (`backend/src/modules/productos/productos.service.js`)
+- Added `GrupoOpciones, Opcion` to the require statement from models
+- Added 4 service functions:
+  - `listarGruposOpciones()` - Lists all groups with their options, ordered by name and option order
+  - `_conOpciones(id, transaction)` - Helper function to fetch group with options in a transaction
+  - `crearGrupoOpciones({ nombre, opciones })` - Creates a group and its options atomically
+  - `actualizarGrupoOpciones(id, { nombre, opciones })` - Updates a group by replacing all options
+  - `eliminarGrupoOpciones(id)` - Deletes a group and nullifies associated products' references
+- Updated module.exports to export all 4 new functions
 
-- `backend/tests/codepay.client.test.js` — Test suite con mock de `global.fetch`:
-  - 2 tests de `firmarToken`: JWT de 3 segmentos determinístico, y cambio de firma con secreto distinto.
-  - 3 tests de `generarQr`: respuesta exitosa, fallo con `!ok`, y excepción de red.
-  - 2 tests de `consultarEstado`: respuesta exitosa y fallo con `!ok`.
-  - 3 tests de `verificarFirmaWebhook`: firma válida, firma inválida, y ausencia de header.
-  - Total: 10 tests, todos pasan. Cero llamadas reales a CodePay.
+#### Step 2: Controller Layer (`backend/src/modules/productos/productos.controller.js`)
+- Added 4 handler functions:
+  - `listarGruposOpciones()` - GET handler returning groups list
+  - `crearGrupoOpciones()` - POST handler with validation for required 'nombre' field, returns 201
+  - `actualizarGrupoOpciones()` - PUT handler for updating groups by ID
+  - `eliminarGrupoOpciones()` - DELETE handler for removing groups by ID
+- Updated module.exports to export all 4 new handlers
 
-## Variables de entorno consumidas
+#### Step 3: Routes (`backend/src/modules/productos/grupos-opciones.routes.js`)
+- Created new routes file with 4 endpoints:
+  - `GET /` - List groups (requires 'productos'/'ver' permission)
+  - `POST /` - Create group (requires 'productos'/'crear' permission)
+  - `PUT /:id` - Update group (requires 'productos'/'editar' permission)
+  - `DELETE /:id` - Delete group (requires 'productos'/'eliminar' permission)
+- All routes protected by auth middleware and permission checks
 
-Definidas en Task 1, presentes en `backend/.env`:
-- `CODEPAY_SANDBOX` — Booleano (string 'true'/'false') para seleccionar sandbox.
-- `CODEPAY_API_URL` — URL base de API (ej: `https://payapi.codewave.com.bo/api`).
-- `CODEPAY_SANDBOX_PUBLIC_KEY`, `CODEPAY_SANDBOX_SECRET_KEY` — Credenciales sandbox.
-- `CODEPAY_PUBLIC_KEY`, `CODEPAY_SECRET_KEY` — Credenciales producción.
-- `CODEPAY_NOTIFICATION_SECRET` — Secreto para verificación de webhooks.
+#### Step 4: App Mount (`backend/src/app.js`)
+- Added require for `gruposOpcionesRoutes` from `./modules/productos/grupos-opciones.routes`
+- Mounted routes at `/api/v1/grupos-opciones`
 
-## Tests
+#### Step 5: Test Suite (`backend/tests/grupos-opciones.test.js`)
+- Created comprehensive test file with 5 test cases:
+  1. ✓ GET without token returns 401
+  2. ✓ Creates group with options correctly
+  3. ✓ Rejects creation without nombre
+  4. ✓ PUT replaces entire options list
+  5. ✓ DELETE group unassigns from products instead of failing
 
-```bash
-$ cd backend && npm test -- codepay.client.test.js
+### Test Results
 
+```
 Test Suites: 1 passed, 1 total
-Tests:       10 passed, 10 total
-Snapshots:   0 total
-Time:        0.415 s
+Tests:       5 passed, 5 total
+Time:        2.28 s
 ```
 
-Todos los tests pasan. No hay llamadas reales a la red — `global.fetch` está completamente mockeado con `jest.fn()` y `mockResolvedValue`/`mockRejectedValue`.
+All tests passed successfully without any failures or errors.
 
-## Commit
+### Files Modified
+- `backend/src/modules/productos/productos.service.js` - Added service functions and imports
+- `backend/src/modules/productos/productos.controller.js` - Added controller handlers
+- `backend/src/app.js` - Added route mounting
 
-```
-62991f8 feat(pagos-qr): cliente HTTP de CodePay (firma JWT, generar QR, consultar estado, verificar webhook)
-```
+### Files Created
+- `backend/src/modules/productos/grupos-opciones.routes.js` - New routes file
+- `backend/tests/grupos-opciones.test.js` - New test file
 
-Incluye 2 archivos nuevos:
-- `backend/src/integrations/codepay/codepay.client.js`
-- `backend/tests/codepay.client.test.js`
+## Git Commit
+- Commit hash: `94b8fb2`
+- Commit message: `feat(productos): CRUD de grupos de opciones`
+- Files included: All 5 modified/created files per brief specification
 
-## Interfaz pública (tal como se usa desde Task 3 y Task 4)
+## Deviations from Brief
+None. Implementation followed the brief exactly as specified.
 
-```javascript
-const { firmarToken, generarQr, consultarEstado, verificarFirmaWebhook } = require('../integrations/codepay/codepay.client');
-
-// Generación de QR para pedido
-const qr = await generarQr({
-  order_id: 'pedido_1_1',
-  amount: 150.50,
-  description: 'Comida Restaurant X',
-  expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
-  currency: 'BOB'
-});
-// { qr_code: '...', tx_id: 'tx_123', amount: 150.50, net_amount: 149.20, ... }
-
-// Consulta de estado (polling)
-const estado = await consultarEstado('tx_123');
-// { status: 'completed' | 'pending', tx_id: 'tx_123', order_id: 'pedido_1_1' }
-
-// Verificación de webhook en Task 4
-const esValido = verificarFirmaWebhook(rawBody, req.get('x-signature'));
-```
-
-## Verificaciones
-
-- [x] Cliente puro: sin `require('express')`, `Sequelize`, ni modelos.
-- [x] Sin dependencias externas: usa `crypto` (Node core) y `fetch` (global).
-- [x] Centralizado: único lugar que hace `fetch` o HMAC para CodePay.
-- [x] Manejo de errores: excepciones con `.status` adjunto (502 para fallos de red/API).
-- [x] Tests sin red: `global.fetch` mockeado; no hay llamadas a CodePay real.
-- [x] Firma JWT manual: implementada verbatim del brief, HS256 correcto.
-- [x] Webhook verification: timing-safe `timingSafeEqual`, no vulnerable a timing attacks.
-
-## Notas
-
-- El cliente está listo para ser consumido por Task 3 (servicio de ventas) y Task 4 (webhooks).
-- No hay API Express, no hay rutas HTTP expuestas en este módulo — es pura lógica de cliente.
-- El `_credenciales()` interno selecciona automáticamente sandbox vs producción según env, centralizando esa lógica.
+## Notes
+- The implementation uses transaction-based operations for data consistency
+- Options are properly ordered (by their 'orden' field)
+- Deleting a group gracefully handles orphaned products by nullifying their `grupo_opciones_id` field
+- All endpoints properly validate permissions using existing auth middleware
+- Response format follows the established pattern (ok/datos structure)

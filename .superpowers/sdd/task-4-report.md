@@ -1,92 +1,113 @@
-# Task 4 — Reporte: Webhook `/webhooks/codepay`
+# Task 4 — Reporte: Administración de grupos de opciones y selector en el formulario de producto
 
 ## Estado: DONE
 
 ## Resumen
 
-Se implementó el endpoint público que CodePay usará para notificar cambios de
-estado de pago QR, siguiendo el brief al pie de la letra (código copiado tal
-cual del brief, sin desviaciones):
+Se implementó el frontend de administración de "opciones/variantes por producto" siguiendo el brief (`.superpowers/sdd/task-4-brief.md`) al pie de la letra, sin desviaciones de código:
 
-1. **`backend/src/app.js`** (modificado):
-   - `app.use(express.json())` se reemplazó por
-     `app.use(express.json({ verify: (req, _res, buf) => { req.rawBody = buf; } }))`
-     para capturar el `Buffer` crudo del body, necesario para verificar la
-     firma HMAC sobre el payload exacto que Express recibió (antes de
-     cualquier re-serialización de `JSON.parse`).
-   - Se agregó el `require` de `./webhooks/codepay.webhook.routes` y se montó
-     con `app.use('/webhooks', codepayWebhookRoutes)` justo después de la ruta
-     de salud (`/api/v1/salud`), fuera del prefijo `/api/v1` y sin pasar por
-     `middlewares/auth.js`.
+1. **`frontend/src/api/gruposOpciones.js`** (nuevo) — cliente API con
+   `getGruposOpciones`, `crearGrupoOpciones`, `actualizarGrupoOpciones`,
+   `eliminarGrupoOpciones`, consumiendo `/grupos-opciones` (CRUD de Task 2).
 
-2. **`backend/src/webhooks/codepay.webhook.routes.js`** (nuevo) — router de
-   Express con `POST /codepay`:
-   - Verifica `X-Codepay-Signature` contra `req.rawBody` usando
-     `codepayClient.verificarFirmaWebhook` (Task 2). Si es inválida → `401`
-     con `{ ok: false, mensaje: 'Firma inválida' }`, sin tocar nada más.
-   - Si la firma es válida, invoca `ventasService.procesarWebhookPagoQr(req.body)`
-     (Task 3) dentro de un `try/catch` que solo loguea el error — el endpoint
-     siempre responde `200 { ok: true }` a CodePay si la firma es válida,
-     independientemente de si el procesamiento interno tuvo un problema
-     (evita reintentos infinitos de CodePay por errores de negocio, p. ej.
-     `order_id` desconocido).
+2. **`frontend/src/pages/productos/ProductosPage.jsx`** (modificado):
+   - Import de iconos `ListChecks, ChevronUp, ChevronDown` agregado.
+   - Import de la nueva API de grupos de opciones.
+   - Nueva pestaña "Opciones" agregada a `TABS` y a su render condicional.
+   - Nuevo componente `TabOpciones` (listado en grilla de grupos con
+     nombre + opciones concatenadas, crear/editar/eliminar, mismo patrón
+     visual que `TabCategorias`).
+   - Nuevo componente `FormGrupoOpcionesModal` (nombre del grupo + lista de
+     opciones con reordenar arriba/abajo, quitar y agregar opción; construye
+     `opciones: [{ nombre, orden }]` a partir de las opciones no vacías al
+     guardar).
+   - `TabProductos` ahora carga `gruposOpciones` con `useQuery` y lo pasa a
+     `FormProductoModal`.
+   - `FormProductoModal` recibe el prop `gruposOpciones`, inicializa
+     `form.grupo_opciones_id` desde `prod?.grupo_opciones?.id`, lo envía como
+     `grupo_opciones_id: parseInt(...) | null` en `handleGuardar`, y renderiza
+     un `<select>` "Grupo de opciones" (con opción "Ninguno") justo después
+     del selector de Categoría.
 
-3. **`backend/tests/webhooks-codepay.test.js`** (nuevo) — 4 tests con
-   `supertest` contra `app` real y base de datos MySQL real (sin mocks):
-   - Firma inválida → `401`, el pedido no cambia de estado.
-   - Firma válida + `payment.completed` → `200`, el pedido pasa a
-     `completado`, el stock del producto baja (3 → 1 por 2 unidades
-     vendidas), el `PagoQr` pasa a `completado`, y se crea 1 entrada en
-     `LibroCaja`.
-   - Webhook duplicado sobre el mismo pago ya completado → `200` no-op, no
-     duplica el asiento de `LibroCaja` (sigue en 1).
-   - `order_id` desconocido → `200` no-op (no rompe, no reintenta CodePay).
-   - El helper `firmar()` calcula el HMAC con
-     `process.env.CODEPAY_NOTIFICATION_SECRET` (cargado por `dotenv` en
-     `app.js`), no un secreto hardcodeado, para que siempre coincida con lo
-     que la app en ejecución realmente usa.
+No se tocó `VentasPage.jsx` ni ningún archivo de backend, conforme al alcance
+indicado.
 
-## Tests
+## Verificación manual
 
-```
-cd backend && npm test -- webhooks-codepay.test.js
-```
-Resultado: **4/4 PASS**.
+Herramienta usada: **Playwright** (Chromium headless), instalado ad-hoc en un
+directorio temporal del scratchpad (no se agregó como dependencia del
+proyecto) porque no había ninguna suite de tests de UI ni navegador
+disponible de otra forma en este entorno. Se escribió un script que conduce
+un navegador real contra la app corriendo de verdad (no mocks):
 
-```
-cd backend && npm test
-```
-Resultado: **21 suites passed, 111 tests passed** (suite completa, incluye
-todas las rutas `/api/v1/*` existentes) — el cambio a `express.json({ verify })`
-no rompió ningún otro endpoint.
+- Backend: `cd backend && npm run dev` (puerto 3001). Requirió además
+  arrancar manualmente el servicio MySQL de XAMPP (`C:\xampp\mysql_start.bat`),
+  que no estaba corriendo — sin esto el backend crasheaba con
+  `SequelizeConnectionRefusedError` al conectar a `bd_restaurante`.
+- Frontend: `cd frontend && npm run dev` (Vite, puerto 5173).
+- Login: `admin@restaurante.com` / `admin123` (valor de `ADMIN_PASSWORD` en
+  `backend/.env`).
+
+Flujo ejecutado y verificado con capturas de pantalla en cada paso
+(Productos → pestaña Opciones):
+
+1. **Crear grupo** "Término de cocción" con opciones "Jugoso", "Término
+   medio", "Bien cocido" → aparece la tarjeta del grupo con las 3 opciones
+   listadas.
+2. **Editar el grupo**: se usó la flecha ↓ para mover "Jugoso" después de
+   "Término medio" (reorden confirmado en el modal), se quitó la opción
+   "Bien cocido" con el botón X, y se guardó → la tarjeta del grupo se
+   actualizó mostrando "Término medio · Jugoso" (2 opciones, orden
+   correcto).
+3. **Asignar a un producto**: se editó el producto "COCA COLA" en la pestaña
+   Productos, se seleccionó "Término de cocción" en el nuevo selector
+   "Grupo de opciones" (ubicado justo debajo de Categoría) y se guardó sin
+   error.
+4. **Eliminar el grupo**: desde la pestaña Opciones se eliminó "Término de
+   cocción" → no falla, la lista queda en "0 grupo(s) de opciones" con el
+   estado vacío ("No hay grupos de opciones. Crea el primero."). Al volver a
+   abrir el producto "COCA COLA" para editar, el selector "Grupo de
+   opciones" muestra **"Ninguno"**, confirmando que el backend limpia la
+   referencia (`ON DELETE SET NULL`, de Task 2/3) y que el frontend lo
+   refleja correctamente tras invalidar la query `['productos']`.
+
+Nota sobre el proceso: en un intento anterior a este harness (antes de que la
+sesión se reiniciara) el script de verificación se ejecutó dos veces sin
+limpiar el grupo previo, dejando temporalmente 2-3 grupos duplicados
+"Término de cocción" en la base de datos de desarrollo. Se detectó vía
+`GET /grupos-opciones`, se limpiaron con `DELETE /grupos-opciones/:id` para
+dejar la base en un estado limpio, y se volvió a correr el flujo completo una
+sola vez de forma inequívoca (un solo grupo, un solo producto modificado)
+para la verificación final documentada arriba. Al terminar, la base de datos
+de desarrollo quedó sin grupos de opciones y con "COCA COLA" en su estado
+original (`grupo_opciones_id = null`), es decir, sin restos de datos de
+prueba.
+
+Capturas de pantalla guardadas en el scratchpad de esta sesión (no forman
+parte del repositorio): tabs de Opciones/Productos, modales de crear/editar
+grupo (antes y después de reordenar/quitar opción), selector de grupo en el
+formulario de producto, confirmación de eliminación y el producto reabierto
+mostrando "Ninguno".
 
 ## Commit
 
 ```
-ae1b652 feat(pagos-qr): webhook de confirmación de CodePay con verificación de firma
+29f932b feat(productos): administración de grupos de opciones y selector en el formulario de producto
 ```
 
-Archivos incluidos en el commit: `backend/src/app.js`,
-`backend/src/webhooks/codepay.webhook.routes.js`,
-`backend/tests/webhooks-codepay.test.js`.
+Archivos incluidos: `frontend/src/api/gruposOpciones.js`,
+`frontend/src/pages/productos/ProductosPage.jsx`.
 
-Nota: al hacer `git status` antes de este commit se observaron cambios no
-relacionados y pre-existentes en `.superpowers/sdd/*` (reportes de otras
-tasks/planes modificados o eliminados en el working tree, no generados por
-mí, aparentemente de un plan distinto reutilizando los mismos nombres de
-archivo). Quedaron fuera de este commit intencionalmente — solo se
-agregó/commiteó lo que pedía el brief de esta Task 4. Este archivo
-(`task-4-report.md`) contenía previamente el reporte de una task no
-relacionada ("Frontend Cajas"); se sobrescribió con el reporte correcto de
-esta Task 4 según lo pedido explícitamente en las instrucciones de esta
-ejecución.
+Nota: al hacer `git status` antes de este commit se observaron cambios
+preexistentes y no relacionados en `.superpowers/sdd/*` (varios briefs y
+reportes de otras tasks aparecen como modificados en el working tree, no
+generados por mí en esta ejecución) y un archivo suelto `renumerar_mesas.sql`
+en la raíz del repo. Se dejaron fuera del commit intencionalmente — solo se
+agregó/commiteó lo que pedía el brief de esta Task 4.
 
-## Dudas / inquietudes
+## Dudas / desviaciones del brief
 
-Ninguna funcional. El endpoint responde `200` incluso cuando
-`procesarWebhookPagoQr` lanza una excepción interna (p. ej. `order_id`
-desconocido, según el diseño de Task 3), lo cual es el comportamiento
-esperado por el brief y los tests (evita que CodePay reintente
-indefinidamente por casos que no son error de firma). No se probó en un
-entorno real con CodePay (fuera del alcance de esta task); solo se verificó
-con los tests automatizados contra MySQL local.
+Ninguna. El código de `frontend/src/api/gruposOpciones.js` y los cambios en
+`frontend/src/pages/productos/ProductosPage.jsx` coinciden exactamente con
+lo especificado en los Steps 1-4 del brief. El lint (`npx eslint`) sobre
+ambos archivos no reportó errores ni warnings.

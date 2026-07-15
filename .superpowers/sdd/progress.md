@@ -1,62 +1,73 @@
-# Progress Ledger — Integración de pagos QR con CodePay
+# Progress Ledger — Opciones/variantes por producto
 
-Plan: docs/superpowers/plans/2026-07-14-pagos-qr-codepay.md
+Plan: docs/superpowers/plans/2026-07-14-opciones-producto-plan.md
 Started: 2026-07-14
-
-## Revisión final de rama
-
-Revisor final (opus): "Ready with fixes" — 1 Important real (I1: un pedido podía quedar varado
-en pendiente_pago si el cajero cerraba el modal QR con el fondo/la X en vez del botón "Cancelar
-cobro QR" — sin ruta de recuperación en la UI, y para una mesa la dejaba ocupada indefinidamente)
-+ 3 Minor sin bloquear (QR en venta rápida de mesa no marca la mesa ocupada durante la espera;
-el webhook responde 200 incluso ante una excepción inesperada, silenciando el reintento de
-CodePay; la columna datos_webhook nunca se persiste). Los Minor heredados de las revisiones por
-tarea se confirmaron aptos para enviar tal cual.
-
-Fix aplicado (commit 31b8092): ModalPagoQr.jsx ahora centraliza el cierre en un solo
-`handleClose` — si el pago sigue pendiente, cancela primero (cancelarPagoQr) y solo cierra el
-modal cuando la cancelación se confirma; el fondo, la X y el botón "Cancelar cobro QR" convergen
-en esa misma ruta. El estado fallido/expirado sigue cerrando directo (ya no hay nada que
-cancelar). Re-revisado y aprobado: los tres caminos de cierre verificados, guard contra doble
-clic durante la cancelación en curso, sin tocar VentasPage.jsx/PedidoPage.jsx (ambos heredan el
-fix por compartir el componente). Build limpio.
-
-**Veredicto final: Ready to merge.** 111/111 tests backend, build frontend limpio.
-
-## TODAS LAS TAREAS COMPLETAS
-Rama: main (sin worktree separado)
-Commits: ae1e41d..31b8092 (5 tareas del plan + 1 fix de revisión de Task 3 + 1 fix de la
-revisión final)
+Rama: main (sin worktree separado, mismo patrón que el plan anterior de CodePay)
 
 ## Completadas
 
-- [x] Task 5: Frontend — Modal de cobro QR en Ventas (commit b1d9ff0, review clean — build limpio,
-  el revisor re-corrió `npx vite build` él mismo y trazó línea por línea la restricción crítica
-  de no duplicar el pedido en el reintento contra el código real del backend. Solo Minor sin
-  bloquear, heredados del propio snippet del brief: sin manejo de isError en el polling, y
-  "Cambiar método de pago" cierra el modal entero en vez de volver al selector.)
+- [x] Task 1: Migración y modelos GrupoOpciones/Opcion/Producto.grupo_opciones_id (commits
+  a2059d1..411b5e6, review clean con 1 Minor sin bloquear: agregó `setupFilesAfterEnv` +
+  `tests/setup.js` para cargar dotenv globalmente en Jest, algo no pedido por el brief. Verificado
+  por el revisor como necesario — el test nuevo importa `../src/models` directamente sin pasar
+  por `app.js`, que es el único lugar que hoy llama `dotenv.config()` — y como inofensivo: mismas
+  4 suites preexistentes (auth-sucursales, inventario, productos, sucursales) fallan igual antes y
+  después por falta del seed "Sucursal Principal", sin relación. El patrón local ya establecido en
+  el repo era más angosto (`require('dotenv').config()` inline en el propio archivo de test, como
+  hace `stock.service.test.js`) pero el cambio elegido no rompe nada. No se re-despacha fix por ser
+  Minor y verificado inofensivo. 2/2 tests.)
 
-- [x] Task 4: Backend — Webhook /webhooks/codepay (commit ae1b652, review clean — 111/111 tests,
-  incluido el revisor re-ejecutando la suite completa él mismo. Solo Minor sin bloquear:
-  console.error sin logging estructurado, sin validar shape de req.body antes de delegar
-  (aceptable, el service ya es defensivo).)
+- [x] Task 2: CRUD backend de grupos de opciones (commit 94b8fb2, review clean — 5/5 tests.
+  Transcripción literal del brief: permiso `productos` reutilizado, eliminar desasigna en vez de
+  fallar, actualizar reemplaza por completo la lista de opciones. Sin residuos en BD tras los
+  tests. Solo Minor sin bloquear: falta validar shape de `opciones` en el body (mismo nivel de
+  laxitud que el resto del módulo, no es regresión).)
 
-- [x] Task 3: Backend — ventas.service.js: flujo de cobro con QR (commit 10d0aba, 106/106 tests;
-  fix de revisión af... commit 4a6b1eb: condición de carrera real entre webhook y polling
-  confirmando el mismo pago simultáneamente — podía duplicar descuento de stock + asiento de
-  libro_caja + total_ventas. Cerrado con row lock (SELECT...FOR UPDATE) + re-chequeo de estado
-  dentro de la transacción en _confirmarPagoQr/_revertirPagoQr. Test de regresión con dos
-  requests HTTP concurrentes reales via Promise.all contra la DB real, verificado que sin el fix
-  el test falla (2 asientos) y con el fix pasa (1 asiento). Re-revisado y aprobado. 107/107 tests.)
+- [x] Task 3: Extender productos para incluir/aceptar grupo_opciones_id (commit 760c082, review
+  clean — 3/3 tests nuevos, y el revisor confirmó contra el commit anterior que los 3 fallos
+  preexistentes de "Stock de productos por sucursal" (falta seed "Sucursal Principal" en la DB de
+  test) ya existían antes de este cambio, sin relación con el nuevo `include`. `actualizarProducto`
+  no se tocó, tal como pedía el brief.)
 
-- [x] Task 1: Backend — Migración, modelo PagoQr, estado pendiente_pago, credenciales (commit
-  f1d464d, review clean — 91/91 tests. Solo Minor sin bloquear: estado_previo no tiene un
-  assert directo de valor en el test, pero su NOT NULL ya queda ejercitado por la creación.
-  Sin secretos reales en ningún archivo commiteado, verificado por el implementador y el revisor.)
-- [x] Task 2: Backend — Cliente CodePay (commit 62991f8, review clean — 10/10 tests, fetch
-  mockeado en todos los casos, sin llamadas de red reales. Solo Minor sin bloquear (heredados
-  del propio texto del brief, no del implementador): un catch muerto en verificarFirmaWebhook
-  que nunca se dispara (Buffer.from hex trunca en vez de tirar), y un test de firma inválida
-  que en la práctica cae por longitud distinta en vez de contenido distinto de igual longitud.)
+- [x] Task 4: Admin frontend — pestaña "Opciones" y selector en formulario de producto (commit
+  29f932b, review clean. Verificación manual con Playwright real contra dev servers + MySQL:
+  crear grupo con 3 opciones, editar reordenando/quitando una, asignar a un producto, eliminar el
+  grupo y confirmar que el producto queda en "Ninguno". El proceso implementador se cortó a mitad
+  de camino por reinicio de sesión pero se resumió desde su transcript sin perder el trabajo ya
+  hecho en el working tree; limpió los duplicados de prueba que había dejado el intento
+  interrumpido antes de la corrida final. Solo Minor sin bloquear: sin feedback visual si falla
+  eliminar un grupo (mismo patrón preexistente de TabCategorias).)
+
+- [x] Task 5: Ventas frontend — selector de opciones y carrito multi-línea por nota (commit
+  1fd0494, review clean. El revisor verificó explícitamente que no hay call-sites obsoletos
+  (stale closures) en incrementar/decrementar/quitar tras cambiar su firma a (producto_id, nota),
+  que el precio nunca viene de la opción elegida, y que productos sin grupo siguen agregándose
+  directo sin modal. Verificación manual con Playwright real: dos líneas separadas del mismo
+  producto con distinta opción, tercera línea "sin especificar", insignia sumando correctamente,
+  y persistencia confirmada en PedidoPage.jsx tras cobrar.)
+
+## Revisión final de rama
+
+Revisor final (opus, diff 424de18..1fd0494): **Ready to merge.** Verificó coherencia end-to-end
+(shapes de `grupo_opciones` entre backend/frontend, alias de Sequelize consistentes entre las 5
+tareas), las 5 restricciones globales sobre el resultado combinado, y corrió la suite completa
+en HEAD vs. el commit base: 17 fallas preexistentes en ambos (mismas 4 suites, seed "Sucursal
+Principal" faltante) — cero regresión, +10 tests nuevos pasando. Sin hallazgos Critical/Important.
+2 Minor nuevos (no vistos por las revisiones por tarea): (1) editar un grupo de opciones no
+invalida `['productos']` en cache — solo lo hace eliminar, dejando `grupo_opciones` embebido
+stale en productos ya cacheados hasta el próximo refetch (staleness visual recuperable, no rompe
+nada porque la opción ya se guardó como texto en `nota` al elegirla); (2) `eliminarGrupoOpciones`
+no usa transacción para el `Producto.update` + `grupo.destroy()`, aunque el `ON DELETE SET NULL`
+ya lo hace seguro igual. Ambos opcionales, no bloquean merge.
+
+Fix aplicado (commit f566d68): `TabOpciones` en `ProductosPage.jsx` ahora invalida también
+`['productos']` al guardar (crear/editar) un grupo de opciones, no solo al eliminarlo — corrige
+el Minor #1 de la revisión final. El Minor #2 (falta de transacción en `eliminarGrupoOpciones`)
+se dejó tal cual por decisión del usuario, ya que el `ON DELETE SET NULL` lo hace seguro igual.
+
+**Veredicto final: Ready to merge.**
+
+## TODAS LAS TAREAS COMPLETAS
+Commits: a2059d1..f566d68 (5 tareas del plan + 1 fix de la revisión final)
 
 ## Notas

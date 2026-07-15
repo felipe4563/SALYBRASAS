@@ -1,122 +1,129 @@
-### Task 1: Migración, modelo `PagoQr`, estado `pendiente_pago` en Pedido, credenciales
+### Task 1: Migración y modelos (`GrupoOpciones`, `Opcion`, `Producto.grupo_opciones_id`)
 
 **Files:**
-- Create: `backend/database/migrations/015_pagos_qr.sql`
-- Create: `backend/src/models/PagoQr.js`
-- Modify: `backend/src/models/Pedido.js`
+- Create: `backend/database/migrations/017_opciones_producto.sql`
+- Create: `backend/src/models/GrupoOpciones.js`
+- Create: `backend/src/models/Opcion.js`
+- Modify: `backend/src/models/Producto.js`
 - Modify: `backend/src/models/index.js`
-- Modify: `backend/.env.example`
-- Modify: `backend/.env` (no se commitea — está en `.gitignore`)
-- Test: `backend/tests/pagos_qr.model.test.js`
+- Test: `backend/tests/opciones.model.test.js`
 
 **Interfaces:**
-- Produces: modelo `PagoQr` exportado desde `backend/src/models/index.js` junto al resto (`{ ..., PagoQr }`), con asociaciones `Pedido.hasMany(PagoQr, { as: 'pagosQr' })` / `PagoQr.belongsTo(Pedido, { as: 'pedido' })` / `PagoQr.belongsTo(Sucursal, { as: 'sucursal' })`. `Pedido.estado` acepta `'pendiente_pago'`.
+- Produces: `GrupoOpciones` (tabla `grupos_opciones`, campos `id`, `nombre`) y `Opcion` (tabla `opciones`, campos `id`, `grupo_opciones_id`, `nombre`, `orden`), exportados desde `backend/src/models/index.js` junto al resto. Asociaciones: `GrupoOpciones.hasMany(Opcion, { as: 'opciones' })`, `Opcion.belongsTo(GrupoOpciones, { as: 'grupo' })`, `Producto.belongsTo(GrupoOpciones, { as: 'grupo_opciones' })`, `GrupoOpciones.hasMany(Producto, { as: 'productos' })`. `Producto` gana el campo `grupo_opciones_id` (nullable).
 
 - [ ] **Step 1: Escribir la migración**
 
-`backend/database/migrations/015_pagos_qr.sql`:
+`backend/database/migrations/017_opciones_producto.sql`:
 
 ```sql
-CREATE TABLE IF NOT EXISTS pagos_qr (
+CREATE TABLE IF NOT EXISTS grupos_opciones (
   id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-  pedido_id INT UNSIGNED NOT NULL,
-  sucursal_id INT UNSIGNED NOT NULL,
-  order_id VARCHAR(25) NOT NULL UNIQUE,
-  tx_id VARCHAR(100) NULL,
-  estado ENUM('pendiente','completado','fallido','expirado','cancelado') NOT NULL DEFAULT 'pendiente',
-  estado_previo VARCHAR(20) NOT NULL,
-  moneda VARCHAR(3) NOT NULL DEFAULT 'BOB',
-  monto_neto DECIMAL(10,2) NOT NULL,
-  comision DECIMAL(10,2) NULL,
-  monto_total DECIMAL(10,2) NULL,
-  qr_code MEDIUMTEXT NULL,
-  expires_at DATETIME NOT NULL,
-  datos_webhook JSON NULL,
+  nombre VARCHAR(100) NOT NULL,
   creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  actualizado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  FOREIGN KEY (pedido_id) REFERENCES pedidos(id),
-  FOREIGN KEY (sucursal_id) REFERENCES sucursales(id)
+  actualizado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-ALTER TABLE pedidos
-  MODIFY COLUMN estado ENUM('pendiente','listo','pendiente_pago','completado','cancelado') NOT NULL DEFAULT 'pendiente';
+CREATE TABLE IF NOT EXISTS opciones (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  grupo_opciones_id INT UNSIGNED NOT NULL,
+  nombre VARCHAR(100) NOT NULL,
+  orden INT NOT NULL DEFAULT 0,
+  creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  actualizado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (grupo_opciones_id) REFERENCES grupos_opciones(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+ALTER TABLE productos
+  ADD COLUMN grupo_opciones_id INT UNSIGNED NULL AFTER categoria_id,
+  ADD FOREIGN KEY (grupo_opciones_id) REFERENCES grupos_opciones(id) ON DELETE SET NULL;
 ```
 
 - [ ] **Step 2: Aplicar la migración a la base de datos local**
 
-`backend/.env` tiene `DB_NAME=bd_restaurante`, `DB_USER=root`, `DB_PASS=` (vacío). Aplicar con:
+`backend/.env` tiene `DB_NAME=bd_restaurante`, `DB_USER=root`, `DB_PASS=` (vacío):
 
 ```bash
 cd backend
-mysql -u root bd_restaurante < database/migrations/015_pagos_qr.sql
+mysql -u root bd_restaurante < database/migrations/017_opciones_producto.sql
 ```
 
-Verificar que no haya errores. Si `ALTER TABLE pedidos` falla por un `sql_mode` incompatible (ya ocurrió en una fase anterior con `NO_ZERO_DATE` sobre `sesiones_caja.cerrado_en`), bajar el `sql_mode` solo para esa sesión de `mysql`, sin tocar nada versionado, tal como se hizo entonces.
+Verificar que no haya errores. Si el `ALTER TABLE productos` fallara por `sql_mode` (ya pasó antes con columnas de fecha en `sesiones_caja`), no debería ocurrir aquí porque `grupo_opciones_id` es `NULL` por defecto — no hace falta relajar `sql_mode`.
 
-- [ ] **Step 3: Crear el modelo `PagoQr`**
+- [ ] **Step 3: Crear el modelo `GrupoOpciones`**
 
-`backend/src/models/PagoQr.js`:
+`backend/src/models/GrupoOpciones.js`:
 
 ```javascript
 const { DataTypes } = require('sequelize');
 const sequelize = require('../config/database');
 
-const PagoQr = sequelize.define('PagoQr', {
+const GrupoOpciones = sequelize.define('GrupoOpciones', {
   id: { type: DataTypes.INTEGER.UNSIGNED, primaryKey: true, autoIncrement: true },
-  pedido_id: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false },
-  sucursal_id: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false },
-  order_id: { type: DataTypes.STRING(25), allowNull: false, unique: true },
-  tx_id: { type: DataTypes.STRING(100) },
-  estado: { type: DataTypes.ENUM('pendiente', 'completado', 'fallido', 'expirado', 'cancelado'), defaultValue: 'pendiente' },
-  estado_previo: { type: DataTypes.STRING(20), allowNull: false },
-  moneda: { type: DataTypes.STRING(3), defaultValue: 'BOB' },
-  monto_neto: { type: DataTypes.DECIMAL(10, 2), allowNull: false },
-  comision: { type: DataTypes.DECIMAL(10, 2) },
-  monto_total: { type: DataTypes.DECIMAL(10, 2) },
-  qr_code: { type: DataTypes.TEXT('medium') },
-  expires_at: { type: DataTypes.DATE, allowNull: false },
-  datos_webhook: { type: DataTypes.JSON },
+  nombre: { type: DataTypes.STRING(100), allowNull: false },
 }, {
-  tableName: 'pagos_qr',
+  tableName: 'grupos_opciones',
   createdAt: 'creado_en',
   updatedAt: 'actualizado_en',
 });
 
-module.exports = PagoQr;
+module.exports = GrupoOpciones;
 ```
 
-- [ ] **Step 4: Agregar `'pendiente_pago'` al enum de `Pedido.estado`**
+- [ ] **Step 4: Crear el modelo `Opcion`**
 
-En `backend/src/models/Pedido.js`, cambiar la línea:
+`backend/src/models/Opcion.js`:
 
 ```javascript
-  estado: { type: DataTypes.ENUM('pendiente','listo','completado','cancelado'), defaultValue: 'pendiente' },
+const { DataTypes } = require('sequelize');
+const sequelize = require('../config/database');
+
+const Opcion = sequelize.define('Opcion', {
+  id: { type: DataTypes.INTEGER.UNSIGNED, primaryKey: true, autoIncrement: true },
+  grupo_opciones_id: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false },
+  nombre: { type: DataTypes.STRING(100), allowNull: false },
+  orden: { type: DataTypes.INTEGER, defaultValue: 0 },
+}, {
+  tableName: 'opciones',
+  createdAt: 'creado_en',
+  updatedAt: 'actualizado_en',
+});
+
+module.exports = Opcion;
 ```
 
-por:
+- [ ] **Step 5: Agregar `grupo_opciones_id` al modelo `Producto`**
+
+En `backend/src/models/Producto.js`, agregar el campo justo después de `categoria_id`:
 
 ```javascript
-  estado: { type: DataTypes.ENUM('pendiente','listo','pendiente_pago','completado','cancelado'), defaultValue: 'pendiente' },
+  categoria_id: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false },
+  grupo_opciones_id: { type: DataTypes.INTEGER.UNSIGNED },
 ```
 
-- [ ] **Step 5: Registrar el modelo y sus asociaciones en `models/index.js`**
+- [ ] **Step 6: Registrar modelos y asociaciones en `index.js`**
 
-Agregar el require junto a los demás, después de `const Caja = require('./Caja');`:
+En `backend/src/models/index.js`, agregar los requires junto a los demás (después de `const Producto = require('./Producto');`):
 
 ```javascript
-const PagoQr = require('./PagoQr');
+const GrupoOpciones = require('./GrupoOpciones');
+const Opcion = require('./Opcion');
 ```
 
-Agregar las asociaciones al final del bloque `// Cajas físicas (Fase 6)` (antes de `module.exports`):
+Agregar las asociaciones junto al bloque `// Productos` existente:
 
 ```javascript
-// Pagos QR (CodePay)
-Pedido.hasMany(PagoQr, { foreignKey: 'pedido_id', as: 'pagosQr' });
-PagoQr.belongsTo(Pedido, { foreignKey: 'pedido_id', as: 'pedido' });
-PagoQr.belongsTo(Sucursal, { foreignKey: 'sucursal_id', as: 'sucursal' });
+// Productos
+Producto.belongsTo(Categoria, { foreignKey: 'categoria_id', as: 'categoria' });
+Categoria.hasMany(Producto, { foreignKey: 'categoria_id', as: 'productos' });
+
+// Opciones de producto
+GrupoOpciones.hasMany(Opcion, { foreignKey: 'grupo_opciones_id', as: 'opciones' });
+Opcion.belongsTo(GrupoOpciones, { foreignKey: 'grupo_opciones_id', as: 'grupo' });
+Producto.belongsTo(GrupoOpciones, { foreignKey: 'grupo_opciones_id', as: 'grupo_opciones' });
+GrupoOpciones.hasMany(Producto, { foreignKey: 'grupo_opciones_id', as: 'productos' });
 ```
 
-Agregar `PagoQr` al `module.exports`:
+Agregar ambos modelos al `module.exports` final:
 
 ```javascript
 module.exports = {
@@ -124,125 +131,74 @@ module.exports = {
   Rol, Permiso, Usuario,
   Area, Mesa,
   Categoria, Producto,
+  GrupoOpciones, Opcion,
   Cliente,
-  SesionCaja, Pedido, DetallePedido,
-  DetalleArqueo, Gasto, LibroCaja,
-  Proveedor, Compra, DetalleCompra,
-  RegistroInventario,
-  Configuracion,
-  Reservacion,
-  Sucursal,
-  ProductoStockSucursal,
-  Caja,
-  PagoQr,
-};
+  ...
 ```
 
-- [ ] **Step 6: Agregar las variables de entorno**
+- [ ] **Step 7: Escribir el test de modelos**
 
-En `backend/.env.example`, agregar al final:
-
-```bash
-CODEPAY_SANDBOX=true
-CODEPAY_API_URL=https://payapi.codewave.com.bo/api
-CODEPAY_PUBLIC_KEY=
-CODEPAY_SECRET_KEY=
-CODEPAY_NOTIFICATION_SECRET=
-CODEPAY_SANDBOX_PUBLIC_KEY=
-CODEPAY_SANDBOX_SECRET_KEY=
-```
-
-En `backend/.env` (real, no versionado — **no pegar las llaves reales en ningún archivo que se vaya a commitear**; el usuario ya las compartió por chat en la conversación de diseño de esta fase, tomarlas de ahí y pegarlas directo en `.env` local), agregar al final las mismas 7 variables con los valores reales (`CODEPAY_SANDBOX`, `CODEPAY_API_URL`, `CODEPAY_PUBLIC_KEY`, `CODEPAY_SECRET_KEY`, `CODEPAY_NOTIFICATION_SECRET`, `CODEPAY_SANDBOX_PUBLIC_KEY`, `CODEPAY_SANDBOX_SECRET_KEY`).
-
-- [ ] **Step 7: Escribir el test del modelo**
-
-`backend/tests/pagos_qr.model.test.js`:
+`backend/tests/opciones.model.test.js`:
 
 ```javascript
-const request = require('supertest');
-const app = require('../src/app');
-const bcrypt = require('bcryptjs');
-const {
-  Sucursal, Area, Mesa, Rol, Usuario, Caja, SesionCaja, Pedido, PagoQr,
-} = require('../src/models');
+const { GrupoOpciones, Opcion, Producto, Categoria } = require('../src/models');
 
-describe('Modelo PagoQr', () => {
-  let sucursalId, areaId, mesaId, usuarioId, cajaId, sesionId, pedidoId;
+describe('Modelos GrupoOpciones y Opcion', () => {
+  let categoriaId;
 
   beforeAll(async () => {
-    const sucursal = await Sucursal.create({ nombre: 'Sucursal PagoQr Test' });
-    sucursalId = sucursal.id;
-    const area = await Area.create({ nombre: 'Area PagoQr Test', sucursal_id: sucursalId });
-    areaId = area.id;
-    const mesa = await Mesa.create({ area_id: areaId, nombre: 'Mesa PagoQr Test' });
-    mesaId = mesa.id;
-    const rol = await Rol.findOne({ where: { nombre: 'Cajero' } });
-    const hash = await bcrypt.hash('clave123', 10);
-    const usuario = await Usuario.create({ rol_id: rol.id, nombre: 'PagoQr Test', email: 'pagoqr-model-test@restaurante.com', contrasena: hash });
-    usuarioId = usuario.id;
-    const caja = await Caja.create({ sucursal_id: sucursalId, nombre: 'Caja PagoQr Test' });
-    cajaId = caja.id;
-    const sesion = await SesionCaja.create({ usuario_id: usuarioId, sucursal_id: sucursalId, caja_id: cajaId, monto_apertura: 0 });
-    sesionId = sesion.id;
-    const pedido = await Pedido.create({
-      sucursal_id: sucursalId, mesa_id: mesaId, usuario_id: usuarioId, sesion_caja_id: sesionId,
-      tipo: 'mesa', estado: 'pendiente_pago', total: 10,
-    });
-    pedidoId = pedido.id;
+    const cat = await Categoria.create({ nombre: 'Categoria Opciones Model Test' });
+    categoriaId = cat.id;
   });
 
   afterAll(async () => {
-    await PagoQr.destroy({ where: { pedido_id: pedidoId } });
-    await Pedido.destroy({ where: { id: pedidoId } });
-    await SesionCaja.destroy({ where: { id: sesionId } });
-    await Caja.destroy({ where: { id: cajaId } });
-    await Usuario.destroy({ where: { id: usuarioId } });
-    await Mesa.destroy({ where: { id: mesaId } });
-    await Area.destroy({ where: { id: areaId } });
-    await Sucursal.destroy({ where: { id: sucursalId } });
+    await Producto.destroy({ where: { categoria_id: categoriaId } });
+    await Categoria.destroy({ where: { id: categoriaId } });
   });
 
-  it('el pedido acepta el estado pendiente_pago', async () => {
-    const pedido = await Pedido.findByPk(pedidoId);
-    expect(pedido.estado).toBe('pendiente_pago');
+  it('crea un grupo de opciones con sus opciones asociadas', async () => {
+    const grupo = await GrupoOpciones.create({ nombre: 'Término de cocción Model Test' });
+    await Opcion.bulkCreate([
+      { grupo_opciones_id: grupo.id, nombre: 'Jugoso', orden: 1 },
+      { grupo_opciones_id: grupo.id, nombre: 'Término medio', orden: 2 },
+    ]);
+
+    const recargado = await GrupoOpciones.findByPk(grupo.id, { include: [{ model: Opcion, as: 'opciones' }] });
+    expect(recargado.opciones).toHaveLength(2);
+
+    await Opcion.destroy({ where: { grupo_opciones_id: grupo.id } });
+    await grupo.destroy();
   });
 
-  it('crea un pago_qr asociado al pedido y lo recupera vía la asociación', async () => {
-    await PagoQr.create({
-      pedido_id: pedidoId,
-      sucursal_id: sucursalId,
-      order_id: `pedido_${pedidoId}_1`,
-      estado: 'pendiente',
-      estado_previo: 'pendiente',
-      monto_neto: 10,
-      expires_at: new Date(Date.now() + 30 * 60000),
-    });
+  it('un producto puede asignarse a un grupo de opciones, y al borrar el grupo queda sin asignar', async () => {
+    const grupo = await GrupoOpciones.create({ nombre: 'Sabor Model Test' });
+    const producto = await Producto.create({ categoria_id: categoriaId, nombre: 'Jugo Model Test', precio: 10, grupo_opciones_id: grupo.id });
 
-    const pedido = await Pedido.findByPk(pedidoId, { include: [{ model: PagoQr, as: 'pagosQr' }] });
-    expect(pedido.pagosQr).toHaveLength(1);
-    expect(pedido.pagosQr[0].order_id).toBe(`pedido_${pedidoId}_1`);
-  });
+    const recargado = await Producto.findByPk(producto.id, { include: [{ model: GrupoOpciones, as: 'grupo_opciones' }] });
+    expect(recargado.grupo_opciones.nombre).toBe('Sabor Model Test');
 
-  it('sanidad: la app sigue arrancando con el modelo nuevo cargado', async () => {
-    const res = await request(app).get('/api/v1/salud');
-    expect(res.status).toBe(200);
+    await grupo.destroy(); // ON DELETE SET NULL — no debe fallar por el producto asignado
+    const productoRecargado = await Producto.findByPk(producto.id);
+    expect(productoRecargado.grupo_opciones_id).toBeNull();
   });
 });
 ```
 
-- [ ] **Step 8: Correr los tests**
+- [ ] **Step 8: Correr el test**
 
-Run: `cd backend && npm test -- pagos_qr.model.test.js`
-Expected: 3/3 tests PASS.
+```bash
+cd backend
+npx jest tests/opciones.model.test.js
+```
+
+Expected: 2 passed.
 
 - [ ] **Step 9: Commit**
 
 ```bash
-git add backend/database/migrations/015_pagos_qr.sql backend/src/models/PagoQr.js backend/src/models/Pedido.js backend/src/models/index.js backend/.env.example backend/tests/pagos_qr.model.test.js
-git commit -m "feat(pagos-qr): tabla pagos_qr, modelo PagoQr y estado pendiente_pago en Pedido"
+git add backend/database/migrations/017_opciones_producto.sql backend/src/models/GrupoOpciones.js backend/src/models/Opcion.js backend/src/models/Producto.js backend/src/models/index.js backend/tests/opciones.model.test.js
+git commit -m "feat(productos): modelo de grupos de opciones y opciones por producto"
 ```
-
-(`backend/.env` no se commitea — está en `.gitignore`.)
 
 ---
 

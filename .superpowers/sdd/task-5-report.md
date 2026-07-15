@@ -1,85 +1,81 @@
-# Task 5 Report: Frontend — modal de cobro QR en Ventas
+# Task 5 Report: Selector de opción y carrito multi-línea en Ventas
 
 ## Estado: DONE
 
-## Summary
+> Nota: este archivo documentaba anteriormente una tarea distinta ("modal de cobro QR en Ventas") de una numeración de tareas previa/otra sesión. Se sobrescribe con el reporte de la Task 5 vigente ("Selector de opción y carrito multi-línea en Ventas"), tal como indicó el brief actual (`.superpowers/sdd/task-5-brief.md`).
 
-Implemented the CodePay QR payment frontend per `.superpowers/sdd/task-5-brief.md`, verbatim as specified.
+## Qué se hizo
 
-## Files created
+1. **Nuevo componente** `frontend/src/pages/ventas/components/SelectorOpcionModal.jsx` — modal que muestra las opciones del `grupo_opciones` de un producto como chips, más un botón "Agregar sin especificar" que agrega el producto sin nota. Copiado literal del Step 1 del brief.
 
-- `frontend/src/api/pagosQr.js` — `consultarEstadoPagoQr(pedidoId)` (GET `/ventas/:id/pago-qr/estado`) and `cancelarPagoQr(pedidoId)` (POST `/ventas/:id/pago-qr/cancelar`).
-- `frontend/src/pages/ventas/components/ModalPagoQr.jsx` — reusable modal. Shows QR image + countdown while `estado === 'pendiente'`, polls `consultarEstadoPagoQr` via TanStack Query v5 `refetchInterval: (query) => ...` (3s while pendiente, stops otherwise), calls `onCompletado(pedido)` when `estado === 'completado'`, and shows a "Cambiar método de pago" / "Reintentar" pair of buttons when `estado` is `'fallido'` or `'expirado'`. "Cancelar cobro QR" button calls `cancelarPagoQr` then `onClose()`.
+2. **`frontend/src/pages/ventas/VentasPage.jsx`** modificado siguiendo los Steps 2-7 del brief, sin desviaciones:
+   - Import de `SelectorOpcionModal` y nuevo estado `selectorOpcion`.
+   - `itemsPorProducto` reemplazado por `cantidadPorProducto` (suma de cantidades por `producto_id`, ya que ahora puede haber varias líneas del mismo producto).
+   - `handleProducto` reescrito: si el producto tiene `grupo_opciones`, abre `SelectorOpcionModal` en vez de agregar directo; si no, agrega directo como antes (`agregarAlCarrito(prod, null)`).
+   - Nueva función `agregarAlCarrito(prod, nota)` que fusiona por `producto_id + nota` (antes solo por `producto_id`).
+   - `incrementar`/`decrementar`/`quitar` ahora reciben `(producto_id, nota)` y operan sobre la línea exacta.
+   - Render de tarjetas de producto: usa `cantidadPorProducto[prod.id]` para el borde resaltado y la insignia de cantidad.
+   - Render del carrito: `key` de cada línea es `producto_id|nota`, se muestra la nota en ámbar bajo el nombre si existe, y los botones +/-/quitar pasan `it.nota`.
+   - `SelectorOpcionModal` se renderiza condicionalmente junto a los demás modales.
 
-## Files modified
+No se tocó backend ni la pestaña de administración de Productos.
 
-- `frontend/src/pages/ventas/VentasPage.jsx`
-  - Import: added `cobrarVenta` to the `../../api/ventas` import, and `ModalPagoQr` from `./components/ModalPagoQr`.
-  - `ModalCobrar` now has two separate mutations:
-    - `iniciar` — calls `crearVentaCompleta(...)` (creates the Pedido + items). Runs only once, on first "Confirmar cobro" click. On success, if `resultado.pago_qr` is present, stores `{ pedidoId: resultado.pedido.id, pagoQr: resultado.pago_qr }` in `pagoQrEstado` state and renders `ModalPagoQr`; otherwise calls `onExito()` directly (non-QR methods).
-    - `reintentar` — calls `cobrarVenta(pagoQrEstado.pedidoId, { metodo_pago: 'qr', monto_recibido: total })` against the **already-existing** pedido. Never calls `crearVentaCompleta` again, so no duplicate pedido/items are created on retry. On success it replaces `pagoQrEstado` with the new `pago_qr` (new QR code + new expiry), re-rendering `ModalPagoQr`.
-  - When `pagoQrEstado` is set, `ModalCobrar` renders `<ModalPagoQr onReintentar={() => reintentar.mutate()} onCompletado={() => onExito()} .../>` instead of the payment-method form.
+## Verificación manual (navegador real)
 
-- `frontend/src/pages/ventas/PedidoPage.jsx`
-  - Import: added `ModalPagoQr` from `./components/ModalPagoQr` (the `cobrarVenta`/`cancelarVenta` imports from `api/ventas` were already present, unchanged).
-  - `ModalCobrar` (used to cobrar an existing mesa/llevar pedido) has a single `cobrar` mutation calling `cobrarVenta(pedidoId, { metodo_pago: metodo, monto_recibido: total })`. On success, if `resultado.pago_qr` is present, stores it in `pagoQr` state and renders `ModalPagoQr`; otherwise calls `onExito()`.
-  - Here "Reintentar" is wired to `() => cobrar.mutate()` — since `cobrar`'s `mutationFn` already targets the existing `pedidoId` via `cobrarVenta` (never creates a new pedido), this is safe to reuse for retries, unlike `VentasPage.jsx` where the first mutation calls `crearVentaCompleta` and therefore must not be reused on retry.
-  - `ModalCancelar` and the rest of the file are unchanged.
+No hay Playwright/navegador instalado por defecto en el entorno, así que instalé `playwright@1.61.1` + Chromium en el directorio scratchpad (`npm install playwright@1.61.1 --no-save` + `npx playwright install chromium`) y escribí scripts Node que manejan un Chromium real contra `http://localhost:5173` (frontend) y `http://localhost:3001` (backend), con sesión de admin real (`admin@restaurante.com` / `admin123`).
 
-## Design-constraint verification (the critical part)
+Durante la primera corrida, MySQL (XAMPP) se cayó a mitad de la prueba (posiblemente por inactividad/crash del proceso `mysqld` gestionado por XAMPP) y el backend empezó a devolver 500 en todos los endpoints, lo que causó un logout inesperado del navegador. Lo detecté por los `HTTP 500` logueados en la consola de Playwright, reinicié `mysqld` manualmente (`mysqld.exe --defaults-file=my.ini --standalone` en background, ya que `mysql_start.bat` de XAMPP corre en foreground) y repetí la corrida completa sin errores.
 
-Traced both flows explicitly to confirm no duplicate-pedido risk:
+Pasos verificados (con capturas en el scratchpad de la sesión, no adjuntas al repo):
 
-1. **VentasPage.jsx (quick sale, `crearVentaCompleta`)**: first click → `iniciar.mutate()` → `crearVentaCompleta` → pedido created once. If method is QR and it fails/expires, "Reintentar" calls `reintentar.mutate()` → `cobrarVenta(pagoQrEstado.pedidoId, ...)`, which only re-attempts payment on the pedido that already exists (confirmed backend `cobrarVenta`/`crearCompleta` return `{ pedido: await obtener(pedidoId), pago_qr }` — same pedido id, no new insert). `iniciar` (the `crearVentaCompleta` mutation) is never invoked again after the first success.
-2. **PedidoPage.jsx (cobrar existing mesa/llevar pedido, `cobrarVenta`)**: the pedido already exists before the modal ever opens (it's `pedidoId` from the route). Both the initial "Confirmar cobro" and every "Reintentar" click call the same `cobrar` mutation, i.e. `cobrarVenta(pedidoId, ...)` — never a create-pedido call. So repeated retries are safe by construction.
+1. **Setup de datos de prueba**: como Task 4 no dejó ningún grupo de opciones vivo, creé desde la pestaña "Opciones" de Productos (CRUD ya existente, sin tocarlo) un grupo temporal **"Termino de coccion QA"** con opciones "Jugoso" y "Termino medio", y lo asigné al producto **COCA COLA** vía el selector "Grupo de opciones" del formulario de edición de producto.
 
-Backend response shapes (checked in `backend/src/modules/ventas/ventas.service.js`):
-- `iniciarPagoQr` returns `{ qr_code, tx_id, expires_at, monto_neto, comision, monto_total }` — matches `ModalPagoQr`'s use of `pagoQr.qr_code`, `pagoQr.expires_at`, `pagoQr.monto_total ?? pagoQr.monto_neto`, and the `pago-qr-estado` query key's use of `pagoQr.tx_id`.
-- `cobrar`/`crearCompleta` (QR branch) return `{ pedido: await obtener(pedido_id), pago_qr }` — matches `resultado.pedido.id` / `resultado.pago_qr` usage in both pages.
-- `consultarEstadoPagoQr` returns `{ estado, pedido }` with `estado` one of `'pendiente' | 'completado' | 'fallido' | 'expirado'` — matches `ModalPagoQr`'s `estadoQuery.data?.estado` branches and the `onCompletado(estadoQuery.data.pedido)` call.
+2. **Producto sin grupo de opciones** (`MOCONCHINCHI`): tocarlo en Ventas lo agregó directo al carrito, cantidad 1, sin abrir ningún modal — comportamiento sin cambios.
 
-## Verification
+3. **Producto con grupo de opciones** (`COCA COLA`): tocarlo abrió `SelectorOpcionModal` con título "COCA COLA — Termino de coccion QA", chips "Termino medio" / "Jugoso" y el botón "Agregar sin especificar". Elegir "Jugoso" agregó una línea al carrito con nota "Jugoso" visible en ámbar.
 
-- `cd frontend && npx vite build` — succeeded (`✓ built in 8.55s`), no import or JSX errors. Only pre-existing warning about a >500kB chunk (unrelated to this change).
-- No frontend test runner exists in this repo; verification was via build + manual trace of both QR success and failure/retry code paths in both pages, and cross-checking the response shapes against the actual (already-committed) backend service code.
+4. **Segunda línea separada**: tocar COCA COLA de nuevo y elegir "Termino medio" agregó una **segunda línea independiente** (no se sumó a la de "Jugoso") — carrito mostró dos líneas de COCA COLA, cada una con cantidad 1 y su propia nota. Captura clave: `11-carrito-con-dos-lineas.png` (dos líneas "COCA COLA" separadas, con "Jugoso" y "Termino medio" respectivamente, total Bs 23.00).
+
+5. **Tercera línea sin nota**: tocar COCA COLA una vez más y elegir "Agregar sin especificar" agregó una tercera línea sin nota (`12-carrito-con-tres-lineas.png`, total Bs 33.00).
+
+6. **Insignia de cantidad**: la tarjeta de COCA COLA mostró la insignia con "3" (suma de las tres líneas: 1+1+1), confirmando que `cantidadPorProducto` sí suma across líneas con distinta nota.
+
+7. **Cobro y detalle del pedido**: marqué el pedido como "Para llevar" (cliente "Cliente QA") y confirmé el cobro en efectivo. El pedido resultante (id 90, "Para llevar #003 — Cliente QA") se abrió en `PedidoPage.jsx` y mostró las 4 líneas correctamente:
+   - MOCONCHINCHI ×1, sin nota
+   - COCA COLA ×1, "Nota: Jugoso"
+   - COCA COLA ×1, "Nota: Termino medio"
+   - COCA COLA ×1, sin nota
+
+   Confirmé también vía API (`GET /api/v1/ventas`) que el pedido 90 persistió los 4 `detalles` con sus `nota` exactas: `MOCONCHINCHI|null; COCA COLA|Jugoso; COCA COLA|Termino medio; COCA COLA|null`. El total (Bs 33.00) coincide con la suma esperada.
+
+   `PedidoPage.jsx` no fue modificado en esta tarea (ya mostraba `nota` de Tasks anteriores); solo se confirmó que sigue funcionando con las líneas nuevas. El pedido quedó en estado "completado" (pago en efectivo cobra al instante), por lo que no se probó la edición de la nota desde esa pantalla — esa funcionalidad de edición es preexistente y no fue tocada por esta tarea.
+
+## Limpieza post-verificación
+
+Al terminar, siguiendo la misma convención que el reporte de Task 4 (no dejar fixtures de prueba en el sistema):
+- Volví a poner "Ninguno" en el campo "Grupo de opciones" de COCA COLA.
+- Eliminé el grupo de opciones "Termino de coccion QA" desde la pestaña Opciones (quedó "0 grupo(s) de opciones").
+
+Los pedidos de venta de prueba (incluido el id 90) quedaron en la base de datos como historial transaccional — no los borré, igual que otros pedidos de prueba preexistentes (ids 57-63) que ya estaban en el sistema antes de esta tarea.
+
+## Regresión de backend
+
+`cd backend && npm test`: 4 suites fallan (`productos.test.js`, `inventario.test.js`, `sucursales.test.js`, `auth-sucursales.test.js`), 17 de 128 tests. Revisé el detalle: todas las fallas son por falta del seed "Sucursal Principal" (`Sucursal no encontrada`, `sucursal_id es requerido para asignar stock inicial`, `expect(...).toBe('Sucursal Principal')`), exactamente la falla preexistente y no relacionada que menciona el brief. No hay ninguna falla en módulos de ventas o grupos-opciones.
+
+## Desviaciones del brief
+
+Ninguna. El código de `SelectorOpcionModal.jsx` y los cambios en `VentasPage.jsx` son literalmente los bloques de código del brief (Steps 1-7), sin modificaciones. El único trabajo adicional fue instrumental para la verificación manual (instalar Playwright/Chromium en el scratchpad, crear el grupo de opciones de prueba, y reiniciar MySQL cuando se cayó a mitad de la prueba) — nada de eso tocó el código de producto entregado.
 
 ## Commit
 
 ```
-git add frontend/src/api/pagosQr.js frontend/src/pages/ventas/components/ModalPagoQr.jsx frontend/src/pages/ventas/VentasPage.jsx frontend/src/pages/ventas/PedidoPage.jsx
-git commit -m "feat(pagos-qr): modal de cobro por QR (CodePay) en Ventas, con polling y reintento"
+git add frontend/src/pages/ventas/components/SelectorOpcionModal.jsx frontend/src/pages/ventas/VentasPage.jsx
+git commit -m "feat(ventas): selector de opciones por producto y carrito multi-línea por nota"
 ```
 
-Only these 4 files were staged/committed; unrelated pending changes under `.superpowers/sdd/*.md` (pre-existing in the working tree from earlier tasks) were left untouched.
+Commit real: `1fd0494`. Solo estos 2 archivos fueron staged/commiteados; el resto de cambios pendientes en el working tree (`.superpowers/sdd/*.md`, `frontend/src/api/gruposOpciones.js`, `frontend/src/pages/productos/ProductosPage.jsx`) son de tareas anteriores y quedaron sin tocar.
 
-## Dudas / inquietudes
+## Archivos relevantes
 
-- Not verified in a real browser against a live CodePay sandbox (no dev server run); verification was static build + manual code trace, per the constraints given for this task.
-
-## Fix: stranded pendiente_pago order on modal dismiss
-
-**Bug (found in final whole-branch review):** `ModalPagoQr.jsx` passed `onClose={onClose}` directly to the shared `Modal` component. `Modal`'s backdrop-click and "X" button call `onClose` unconditionally, bypassing the "Cancelar cobro QR" button's `cancelar.mutate()` call. If a cashier dismissed the QR modal that way while `estado === 'pendiente'`, the modal unmounted (stopping the `consultarEstadoPagoQr` poll) with the backend `Pedido` left stuck in `'pendiente_pago'`. Neither `cobrar()` (needs `'pendiente'`/`'listo'`) nor `cancelar()` (needs `'pendiente'`) could recover it from the UI afterward — both would 409 — and for a `mesa` order the table stayed permanently unusable until a manual DB fix.
-
-**Fix:** Added a single `handleClose` function in `ModalPagoQr.jsx`:
-
-```jsx
-const handleClose = () => {
-  if (estado === 'pendiente') {
-    if (!cancelar.isPending) cancelar.mutate();
-    return;
-  }
-  onClose();
-};
-```
-
-- `<Modal titulo="Cobro por QR" onClose={handleClose} ancho="max-w-sm">` — backdrop click and the "X" button (both go through `Modal`'s `onClose` prop) now route through `handleClose`.
-- The "Cancelar cobro QR" button's `onClick` now calls `handleClose` instead of `cancelar.mutate()` directly, so there is exactly one dismissal path while pending.
-- The `cancelar` mutation itself is unchanged — `onSuccess: () => onClose()` still closes the modal only after the server confirms the pendiente_pago pedido was reverted.
-- The `(estado === 'fallido' || estado === 'expirado')` branch's "Cambiar método de pago" button still calls `onClose` directly (untouched), since by that point the backend has already reverted the pedido via `_revertirPagoQr` — there is nothing left to cancel.
-
-**Manual trace:**
-1. `estado === 'pendiente'`, dismiss via backdrop or "X" -> `Modal` invokes `onClose` prop, which is now `handleClose` -> `estado === 'pendiente'` branch taken -> `cancelar.mutate()` fires `cancelarPagoQr(pedidoId)` -> only on that request's success does `cancelar`'s `onSuccess` call the real `onClose()`, closing the modal. No stranded `pendiente_pago` pedido.
-2. `estado === 'fallido'` or `'expirado'`, dismiss via backdrop or "X" -> `handleClose` runs, `estado !== 'pendiente'` -> falls through directly to `onClose()`, closing immediately with no `cancelarPagoQr` call — avoids a spurious cancel against a pedido that was already reverted server-side (which would 404/409 since there's no longer a live `PagoQr` row in `'pendiente'`).
-3. `estado === 'pendiente'`, click "Cancelar cobro QR" -> `onClick={handleClose}` -> same `estado === 'pendiente'` branch as case 1 -> `cancelar.mutate()` -> identical behavior to before the fix, now just routed through `handleClose`. The button is also `disabled={cancelar.isPending}` as before, preventing double-submission.
-
-Verified with `cd frontend && npx vite build` — build succeeded (no errors, only the pre-existing large-chunk warning).
+- `frontend/src/pages/ventas/components/SelectorOpcionModal.jsx` (nuevo)
+- `frontend/src/pages/ventas/VentasPage.jsx` (modificado)

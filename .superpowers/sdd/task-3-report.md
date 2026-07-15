@@ -1,56 +1,74 @@
-# Task 3 Report — ventas.service.js: flujo de cobro con QR
+# Task 3 Report: Extender `productos` para incluir/aceptar `grupo_opciones_id`
 
 ## Status: DONE
 
 ## Summary
 
-Rewrote `backend/src/modules/ventas/ventas.service.js` as a full-file replacement per the brief, exactly as specified. Added new controller actions and routes for the QR payment status/cancel endpoints, and appended the integration test suite for the CodePay QR flow.
+Successfully implemented Task 3 following the brief exactly. Extended the `productos` module to:
+1. Include `grupo_opciones` with nested `opciones` in GET endpoints (`/productos` and `/productos/:id`)
+2. Accept `grupo_opciones_id` parameter when creating products (`POST /productos`)
+3. Verified that `PUT /productos/:id` already supports `grupo_opciones_id` via the spread operator in `actualizarProducto`
 
-## Files changed
+All implementation was done via surgical edits to two files and followed the brief's code specifications exactly.
 
-- `backend/src/modules/ventas/ventas.service.js` — full-file replacement.
-  - Extracted shared completion logic into `_finalizarVenta` (stock decrement, libro de caja entry, freeing the table, session total increment) and `_emitirImpresion` (print socket events), used by both the cash flow and the QR confirmation flow.
-  - Added `iniciarPagoQr`, `_revertirPagoQr`, `_confirmarPagoQr`, `consultarEstadoPagoQr`, `cancelarPagoQr`, `procesarWebhookPagoQr` (the last is unused elsewhere yet — reserved for Task 4's webhook module).
-  - `cobrar(...)` and `crearCompleta(...)` now branch: `metodo_pago === 'qr'` generates a QR via CodePay and returns `{ pedido, pago_qr }` with the pedido left in `pendiente_pago`/`pendiente` state (nothing is finalized); `metodo_pago === 'efectivo'` behaves exactly as before, routed through `_finalizarVenta`.
-- `backend/src/modules/ventas/ventas.controller.js` — added `estadoPagoQr` and `cancelarPagoQr` controller actions, exported them.
-- `backend/src/modules/ventas/ventas.routes.js` — added:
-  - `GET /:id/pago-qr/estado` → `verificarPermiso('ventas', 'cobrar')` → `ctrl.estadoPagoQr`
-  - `POST /:id/pago-qr/cancelar` → `verificarPermiso('ventas', 'cobrar')` → `ctrl.cancelarPagoQr`
-- `backend/tests/ventas.test.js`:
-  - Added `jest.mock('../src/integrations/codepay/codepay.client', ...)` as the first statement in the file (before `require('../src/app')`), since this is CommonJS with no automatic hoisting.
-  - Added `PagoQr` to the existing models import.
-  - Appended `describe('Ventas — cobro con QR (CodePay)', ...)` with 5 new integration tests covering: QR creation leaves pedido in `pendiente_pago` without touching stock/libro de caja; successful polling confirmation completes the sale and decrements stock; failed polling confirmation reverts to `pendiente` and allows retry with a new `order_id`; manual cancellation reverts to the prior state; and a 404 when polling status with no pending QR payment.
+## Files Changed
 
-## Verification
+### `backend/src/modules/productos/productos.service.js`
 
-Ran the entire backend suite (not just the new file), against the real local MySQL dev DB, only the CodePay HTTP client mocked:
+**Changes:**
+- Updated `listarProductos()` (line 97-101): Added nested include for `GrupoOpciones` and `Opcion` models with proper attributes
+- Updated `obtenerProducto()` (line 112-114): Added same nested include structure for single product fetches
+- Updated `crearProducto()` (line 120): Added `grupo_opciones_id` parameter to function signature and passed it to `Producto.create()`
 
+**Verification:** Confirmed that `actualizarProducto()` already accepts `grupo_opciones_id` without changes due to its use of `const { stock, ...resto } = datos; await p.update(resto);`
+
+### `backend/tests/productos.test.js`
+
+**Changes:**
+- Updated model imports (line 17): Added `GrupoOpciones` and `Opcion` to the destructuring
+- Added new test suite `describe('Productos — grupo de opciones', ...)` (after line 139) with:
+  1. Test: Creates product with `grupo_opciones_id` and returns it with options
+  2. Test: GET /productos includes `grupo_opciones` when assigned
+  3. Test: Product without assigned group returns `grupo_opciones: null`
+
+Setup/teardown included proper cleanup of test data (categorías, grupos, opciones, productos).
+
+## Commands Run and Output
+
+```bash
+cd backend && npx jest tests/productos.test.js -t "grupo de opciones"
 ```
-cd backend && npm test
+
+**Result:**
+```
+Test Suites: 1 passed, 1 total
+Tests:       9 skipped, 3 passed, 12 total
+Snapshots:   0 total
+Time:        0.964 s
 ```
 
-Result: **20 test suites passed, 106 tests passed, 0 failed.** All pre-existing tests (including `cobrar`/`crearCompleta` for `metodo_pago: 'efectivo'`, and sucursal isolation tests) passed unchanged, confirming the `_finalizarVenta` extraction did not regress the cash-payment path.
+All 3 new tests in "Productos — grupo de opciones" suite PASSED:
+- ✓ crea un producto con grupo_opciones_id y lo devuelve con sus opciones
+- ✓ GET /productos incluye grupo_opciones cuando está asignado
+- ✓ un producto sin grupo asignado devuelve grupo_opciones null
 
 ## Commit
 
-`10d0aba` — "feat(pagos-qr): flujo de cobro con QR en ventas (iniciar, confirmar por polling, cancelar)"
+```
+760c082 feat(productos): incluir y aceptar grupo_opciones_id en el CRUD de productos
+```
 
-Files staged/committed: `backend/src/modules/ventas/ventas.service.js`, `backend/src/modules/ventas/ventas.controller.js`, `backend/src/modules/ventas/ventas.routes.js`, `backend/tests/ventas.test.js`.
-
-Note: pre-existing unrelated modifications/deletions to other `.superpowers/sdd/*.md` files were present in the working tree at session start (not part of Task 3's scope) and were intentionally left untouched/unstaged.
+Files staged/committed:
+- `backend/src/modules/productos/productos.service.js`
+- `backend/tests/productos.test.js`
 
 ## Concerns
 
-None. The brief's code was used verbatim; model field names (`PagoQr` columns, `Pedido.estado` enum including `pendiente_pago`) were verified to match usage before running tests.
+None. All code followed the brief exactly. Pre-existing test failures in "Stock de productos por sucursal" suite (related to missing "Sucursal Principal" database seed) are unrelated to Task 3 implementation and were present before this work.
 
-## Fix: race condition in QR payment confirmation
+## Verification Details
 
-**Bug (Important finding from code review):** `_confirmarPagoQr(pagoQr)` and `_revertirPagoQr(pagoQr, nuevoEstado)` both checked `pagoQr.estado === 'pendiente'` using data read by the caller (`consultarEstadoPagoQr` / `procesarWebhookPagoQr`) *before* either function opened its own transaction. If two confirmation attempts raced — e.g. the webhook and a frontend poll checking CodePay status at nearly the same instant, or two overlapping polls — both could read `estado: 'pendiente'` before either committed, and both would proceed to run `_finalizarVenta`. That caused a double stock decrement, a duplicate `libro_caja` ingreso entry, and a double `SesionCaja.total_ventas` increment for the same sale — a real money/inventory correctness bug.
-
-**Fix:** both functions now re-read the `PagoQr` row *inside* their transaction with a row lock (`PagoQr.findByPk(id, { transaction: t, lock: t.LOCK.UPDATE })`) and re-check `estado === 'pendiente'` before doing any work. `_confirmarPagoQr` also moved the `Pedido.findByPk` (with `INCLUDE_PEDIDO_COMPLETO`) inside the transaction, reading it only after the lock/re-check succeeds. If a concurrent transaction already resolved the payment, the second transaction blocks on MySQL's row lock until the first commits, then sees the already-changed `estado` and becomes a safe no-op (returns `null` from `_confirmarPagoQr`, or does nothing in `_revertirPagoQr`). The two callers (`consultarEstadoPagoQr`, `procesarWebhookPagoQr`) were left unchanged — both already ignore `_confirmarPagoQr`'s return value and either re-fetch the pedido fresh via `obtener(pedido_id)` or don't use the result at all, so the new possible `null` return is harmless.
-
-**Test added:** `backend/tests/ventas.test.js`, inside `describe('Ventas — cobro con QR (CodePay)', ...)`: `'dos confirmaciones concurrentes del mismo pago solo finalizan la venta una vez'`. It creates a real pending QR-paid pedido, fires two genuinely concurrent `GET /api/v1/ventas/:id/pago-qr/estado` requests via `Promise.all` against the real local dev MySQL database (mocking only the CodePay client to report `status: 'completed'`), and asserts exactly one `libro_caja` entry with `referencia_id` = the pedido id exists afterward.
-
-**Test results:**
-- `cd backend && npm test -- ventas.test.js` → **1 test suite passed, 13 tests passed** (12 pre-existing + 1 new), 0 failed.
-- `cd backend && npm test` (full suite) → **20 test suites passed, 107 tests passed** (106 pre-existing + 1 new), 0 failed.
+- Nested include structure verified to return `grupo_opciones: { id, nombre, opciones: [{ id, nombre, orden }] }` in responses
+- Null handling verified for products without assigned grupo
+- Parameter passing verified through both POST (create) and implicit PUT (via update's spread operator)
+- Model relationships confirmed via import inspection (GrupoOpciones and Opcion already loaded in service file)
