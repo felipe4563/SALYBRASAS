@@ -4,11 +4,13 @@ const {
   RegistroInventario, Compra, Proveedor, LibroCaja, SesionCaja, Sucursal,
 } = require('../../models');
 
+// Offset fijo de Bolivia: un datetime sin offset se parsea en la hora local
+// del proceso de Node, que puede no coincidir con la del negocio (-04:00).
 function filtroFecha(desde, hasta) {
   if (!desde && !hasta) return {};
   const range = {};
-  if (desde) range[Op.gte] = new Date(desde + 'T00:00:00');
-  if (hasta) range[Op.lte] = new Date(hasta + 'T23:59:59');
+  if (desde) range[Op.gte] = new Date(`${desde}T00:00:00-04:00`);
+  if (hasta) range[Op.lte] = new Date(`${hasta}T23:59:59-04:00`);
   return { creado_en: range };
 }
 

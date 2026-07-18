@@ -14,6 +14,7 @@ export default function TabVentas({ empresa }) {
   const [desde, setDesde] = useState(inicioMes());
   const [hasta, setHasta] = useState(hoy());
   const [filtroCajero, setFiltroCajero] = useState('todos');
+  const [filtroMetodoPago, setFiltroMetodoPago] = useState('todos');
   const [params, setParams] = useState({ desde: inicioMes(), hasta: hoy() });
 
   const { data = [], isLoading } = useQuery({
@@ -40,8 +41,11 @@ export default function TabVentas({ empresa }) {
     if (accesoTodas && filtroSucursal !== 'todas') {
       base = base.filter(v => String(v.sucursal?.id) === filtroSucursal);
     }
+    if (filtroMetodoPago !== 'todos') {
+      base = base.filter(v => (v.metodo_pago || 'efectivo') === filtroMetodoPago);
+    }
     return base;
-  }, [data, filtroCajero, filtroSucursal, accesoTodas]);
+  }, [data, filtroCajero, filtroSucursal, filtroMetodoPago, accesoTodas]);
 
   const stats = useMemo(() => {
     const total    = filtrado.reduce((s, v) => s + parseFloat(v.total || 0), 0);
@@ -70,9 +74,13 @@ export default function TabVentas({ empresa }) {
     ? 'Todos los cajeros'
     : cajeros.find(c => String(c.id) === filtroCajero)?.nombre || 'Cajero';
 
+  const metodoPagoLabel = filtroMetodoPago === 'todos'
+    ? 'Todos los métodos'
+    : filtroMetodoPago === 'efectivo' ? 'Efectivo' : 'QR / Transferencia';
+
   const exportar = () => exportarPDF({
     titulo:        'Reporte de Ventas',
-    subtitulo:     `${fecha(params.desde)} — ${fecha(params.hasta)} · ${cajeroLabel}`,
+    subtitulo:     `${fecha(params.desde)} — ${fecha(params.hasta)} · ${cajeroLabel} · ${metodoPagoLabel}`,
     empresa,
     generadoPor:   usuario?.nombre,
     columnas:      ['Fecha', 'Mesa', 'Cliente', 'Cajero', 'Método de pago', 'Total'],
@@ -90,7 +98,7 @@ export default function TabVentas({ empresa }) {
       { label: 'Efectivo',           valor: bs(stats.efectivo) },
       { label: 'QR / Transferencia', valor: bs(stats.qr) },
     ],
-    nombreArchivo: `reporte-ventas-${params.desde}-${params.hasta}${filtroCajero !== 'todos' ? `-${cajeroLabel}` : ''}.pdf`,
+    nombreArchivo: `reporte-ventas-${params.desde}-${params.hasta}${filtroCajero !== 'todos' ? `-${cajeroLabel}` : ''}${filtroMetodoPago !== 'todos' ? `-${filtroMetodoPago}` : ''}.pdf`,
   });
 
   return (
@@ -107,6 +115,15 @@ export default function TabVentas({ empresa }) {
               {cajeros.map(c => (
                 <option key={c.id} value={String(c.id)}>{c.nombre}</option>
               ))}
+            </select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Método de pago</label>
+            <select value={filtroMetodoPago} onChange={e => setFiltroMetodoPago(e.target.value)}
+              className="px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-violet-500">
+              <option value="todos">Todos</option>
+              <option value="efectivo">Efectivo</option>
+              <option value="qr">QR / Transferencia</option>
             </select>
           </div>
           {accesoTodas && (

@@ -6,6 +6,16 @@ const { emitir } = require('../../socket');
 const { ajustarStockSucursal } = require('../inventario/stock.service');
 const codepayClient = require('../../integrations/codepay/codepay.client');
 
+// Rango del día calendario en hora de Bolivia (-04:00), sin depender de la
+// zona horaria del proceso de Node/VPS.
+function _rangoDiaBolivia() {
+  const fecha = new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  return {
+    inicio: new Date(`${fecha}T00:00:00-04:00`),
+    fin: new Date(`${fecha}T23:59:59.999-04:00`),
+  };
+}
+
 const INCLUDE_PEDIDO_COMPLETO = [
   { model: Mesa, as: 'mesa', attributes: ['id', 'nombre', 'estado'] },
   { model: Cliente, as: 'cliente', attributes: ['id', 'nombre', 'numero_documento'] },
@@ -49,10 +59,7 @@ async function obtener(id, alcance) {
 }
 
 async function _siguienteNumeroLlevar() {
-  const inicio = new Date();
-  inicio.setHours(0, 0, 0, 0);
-  const fin = new Date();
-  fin.setHours(23, 59, 59, 999);
+  const { inicio, fin } = _rangoDiaBolivia();
   const count = await Pedido.count({
     where: {
       tipo: 'llevar',
@@ -145,8 +152,7 @@ async function _emitirImpresion(pedido, metodo_pago, cambio, sucursal_id) {
   const cfgRows = await Configuracion.findAll({ where: { clave: ['nombre_negocio', 'simbolo_moneda', 'direccion', 'telefono', 'flujo_cocina'] } });
   const cfg = cfgRows.reduce((o, r) => { o[r.clave] = r.valor; return o; }, {});
 
-  const inicioDia = new Date(); inicioDia.setHours(0, 0, 0, 0);
-  const finDia    = new Date(); finDia.setHours(23, 59, 59, 999);
+  const { inicio: inicioDia, fin: finDia } = _rangoDiaBolivia();
   const numero_orden_diario = await Pedido.count({
     where: { creado_en: { [Op.between]: [inicioDia, finDia] }, estado: { [Op.ne]: 'cancelado' } },
   });
