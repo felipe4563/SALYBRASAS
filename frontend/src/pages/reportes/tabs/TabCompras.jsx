@@ -7,7 +7,7 @@ import { useAuthStore } from '../../../store/authStore';
 import { exportarPDF } from '../utils/exportarPDF';
 import { FiltroFechas, StatCard, BadgeTipo, Skeleton, bs, fecha, fechaHora, hoy, inicioMes } from '../shared';
 
-export default function TabCompras({ empresa }) {
+export default function TabCompras({ empresa, logo, direccion, telefono }) {
   const { usuario } = useAuth();
   const accesoTodas = useAuthStore((s) => s.usuario?.sucursal_activa?.id == null);
   const [filtroSucursal, setFiltroSucursal] = useState('todas');
@@ -59,7 +59,7 @@ export default function TabCompras({ empresa }) {
   const exportar = () => exportarPDF({
     titulo:        'Reporte de Compras',
     subtitulo:     `${fecha(params.desde)} — ${fecha(params.hasta)}`,
-    empresa,
+    empresa, logo, direccion, telefono,
     generadoPor:   usuario?.nombre,
     columnas:      ['Fecha', 'Proveedor', 'Estado', 'Registrado por', 'Total', 'Notas'],
     filas:         filtrado.map(c => [

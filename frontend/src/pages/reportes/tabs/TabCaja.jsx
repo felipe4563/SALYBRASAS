@@ -7,7 +7,7 @@ import { useAuthStore } from '../../../store/authStore';
 import { exportarPDF } from '../utils/exportarPDF';
 import { FiltroFechas, StatCard, BadgeTipo, Skeleton, bs, fecha, fechaHora, hoy, inicioMes } from '../shared';
 
-export default function TabCaja({ empresa }) {
+export default function TabCaja({ empresa, logo, direccion, telefono }) {
   const { usuario } = useAuth();
   const accesoTodas = useAuthStore((s) => s.usuario?.sucursal_activa?.id == null);
   const [filtroSucursal, setFiltroSucursal] = useState('todas');
@@ -60,7 +60,7 @@ export default function TabCaja({ empresa }) {
   const exportar = () => exportarPDF({
     titulo:        'Reporte de Caja / Libro Caja',
     subtitulo:     `${fecha(params.desde)} — ${fecha(params.hasta)}`,
-    empresa,
+    empresa, logo, direccion, telefono,
     generadoPor:   usuario?.nombre,
     columnas:      ['Fecha', 'Tipo', 'Concepto', 'Método de pago', 'Usuario', 'Monto'],
     filas:         filtrado.map(r => [

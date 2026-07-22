@@ -12,8 +12,8 @@ export const getSesion = (id) =>
 export const abrirCaja = (caja_id, monto_apertura) =>
   api.post('/caja/abrir', { caja_id, monto_apertura }).then(r => r.data.datos);
 
-export const cerrarCaja = (id, denominaciones) =>
-  api.post(`/caja/${id}/cerrar`, { denominaciones }).then(r => r.data.datos);
+export const cerrarCaja = (id, { denominaciones, monto_cierre } = {}) =>
+  api.post(`/caja/${id}/cerrar`, { denominaciones, monto_cierre }).then(r => r.data.datos);
 
 export const getReporte = (id) =>
   api.get(`/caja/${id}/reporte`).then(r => r.data.datos);

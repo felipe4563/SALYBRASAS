@@ -169,3 +169,67 @@ describe('Caja — acceso a todas las sucursales', () => {
     expect(res.body.datos.caja_id).toBe(cajaX.id);
   });
 });
+
+describe('Caja — cierre de sesión', () => {
+  let sucursal, caja, usuarioId, token;
+
+  beforeAll(async () => {
+    sucursal = await Sucursal.create({ nombre: 'Sucursal Cierre Caja Test' });
+    caja = await Caja.create({ sucursal_id: sucursal.id, nombre: 'Caja Cierre Test' });
+
+    const rol = await Rol.findOne({ where: { nombre: 'Cajero' } });
+    const hash = await bcrypt.hash('clave123', 10);
+    const usuario = await Usuario.create({ rol_id: rol.id, nombre: 'Cierre Caja Test', email: 'cierre-caja-test@restaurante.com', contrasena: hash });
+    await usuario.addSucursal(sucursal);
+    usuarioId = usuario.id;
+
+    const login = await request(app).post('/api/v1/auth/login').send({ email: 'cierre-caja-test@restaurante.com', contrasena: 'clave123' });
+    token = login.body.datos.token;
+  });
+
+  afterAll(async () => {
+    await SesionCaja.destroy({ where: { usuario_id: usuarioId } });
+    await Usuario.destroy({ where: { id: usuarioId } });
+    await Caja.destroy({ where: { id: caja.id } });
+    await Sucursal.destroy({ where: { id: sucursal.id } });
+  });
+
+  async function abrirNuevaSesion() {
+    const abrir = await request(app)
+      .post('/api/v1/caja/abrir')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ caja_id: caja.id, monto_apertura: 100 });
+    return abrir.body.datos.id;
+  }
+
+  it('cierra con conteo detallado por denominación', async () => {
+    const sesionId = await abrirNuevaSesion();
+    const res = await request(app)
+      .post(`/api/v1/caja/${sesionId}/cerrar`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ denominaciones: [{ denominacion: 100, cantidad: 1 }] });
+    expect(res.status).toBe(200);
+    expect(parseFloat(res.body.datos.monto_cierre)).toBe(100);
+    expect(res.body.datos.estado).toBe('cerrada');
+  });
+
+  it('cierra con un monto total anotado directamente (sin denominaciones)', async () => {
+    const sesionId = await abrirNuevaSesion();
+    const res = await request(app)
+      .post(`/api/v1/caja/${sesionId}/cerrar`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ monto_cierre: 137.50 });
+    expect(res.status).toBe(200);
+    expect(parseFloat(res.body.datos.monto_cierre)).toBe(137.50);
+    expect(res.body.datos.estado).toBe('cerrada');
+  });
+
+  it('sin denominaciones ni monto_cierre → 400', async () => {
+    const sesionId = await abrirNuevaSesion();
+    const res = await request(app)
+      .post(`/api/v1/caja/${sesionId}/cerrar`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({});
+    expect(res.status).toBe(400);
+  });
+});

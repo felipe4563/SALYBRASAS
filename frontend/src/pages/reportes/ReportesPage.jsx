@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { BarChart2, FileText, Package, Truck, BookOpen } from 'lucide-react';
-import { getConfiguracion } from '../../api/configuracion';
+import { getConfiguracion, logoSrc } from '../../api/configuracion';
 import { usePermisos } from '../../hooks/usePermisos';
 import TabVentas     from './tabs/TabVentas';
 import TabInventario from './tabs/TabInventario';
@@ -25,7 +25,12 @@ export default function ReportesPage() {
     staleTime: 5 * 60 * 1000,
   });
 
-  const empresa = config.nombre_negocio || 'RESTAURANTE';
+  const empresaInfo = {
+    empresa:   config.nombre_negocio || 'RESTAURANTE',
+    logo:      logoSrc(config.logo),
+    direccion: config.direccion,
+    telefono:  config.telefono,
+  };
 
   if (!tienePermiso('reportes', 'ver')) {
     return (
@@ -80,7 +85,7 @@ export default function ReportesPage() {
           </div>
 
           <div className="p-6">
-            {TabActivo && <TabActivo empresa={empresa} />}
+            {TabActivo && <TabActivo {...empresaInfo} />}
           </div>
         </div>
       </div>

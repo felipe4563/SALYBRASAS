@@ -9,7 +9,7 @@ import { FiltroFechas, StatCard, BadgeTipo, Skeleton, bs, fecha, fechaHora, hoy,
 
 const TIPOS = ['todos', 'entrada', 'salida', 'venta', 'compra', 'ajuste'];
 
-export default function TabInventario({ empresa }) {
+export default function TabInventario({ empresa, logo, direccion, telefono }) {
   const { usuario } = useAuth();
   const accesoTodas = useAuthStore((s) => s.usuario?.sucursal_activa?.id == null);
   const [filtroSucursal, setFiltroSucursal] = useState('todas');
@@ -63,7 +63,7 @@ export default function TabInventario({ empresa }) {
   const exportar = () => exportarPDF({
     titulo:        'Reporte de Inventario',
     subtitulo:     `${fecha(params.desde)} — ${fecha(params.hasta)}${filtroTipo !== 'todos' ? ` · ${filtroTipo}` : ''}`,
-    empresa,
+    empresa, logo, direccion, telefono,
     generadoPor:   usuario?.nombre,
     columnas:      ['Fecha', 'Producto', 'Tipo', 'Cantidad', 'Stock Ant.', 'Stock Nuevo', 'Usuario', 'Nota'],
     filas:         filtrado.map(r => [

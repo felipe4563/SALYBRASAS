@@ -53,8 +53,8 @@ async function listarGastos(req, res, next) {
 
 async function cerrar(req, res, next) {
   try {
-    const { denominaciones = [] } = req.body;
-    res.json({ ok: true, datos: await svc.cerrar(req.params.id, req.usuario.id, denominaciones, _alcance(req)) });
+    const { denominaciones = [], monto_cierre } = req.body;
+    res.json({ ok: true, datos: await svc.cerrar(req.params.id, req.usuario.id, { denominaciones, monto_cierre }, _alcance(req)) });
   } catch (err) { next(err); }
 }
 

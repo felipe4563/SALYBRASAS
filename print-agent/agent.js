@@ -151,33 +151,35 @@ function buildCaja(data) {
   var hora        = ahora.toLocaleTimeString('es-BO', { hour: '2-digit', minute: '2-digit' });
   var sym         = cfg.simbolo_moneda || 'Bs.';
   var nombre      = cfg.nombre_negocio || 'RESTAURANTE';
+  var total       = parseFloat(pedido.total);
 
   var t = new Esc();
   t.init().charset();
 
   // ── Encabezado ────────────────────────────────────────────────────────────
   t.rule('=');
-  t.center().bold(true).dblW().line(nombre.toUpperCase()).normal().bold(false);
-  if (cfg.direccion) t.center().line(cfg.direccion);
-  if (cfg.telefono)  t.center().line('Tel: ' + cfg.telefono);
+  t.center().bold(true).line(nombre.toUpperCase()).bold(false);
+  var direccionTel = [cfg.direccion, cfg.telefono ? 'Tel: ' + cfg.telefono : null].filter(Boolean).join(' - ');
+  if (direccionTel) t.center().line(direccionTel);
   t.rule('=');
 
-  // ── Tipo de orden + identificación ────────────────────────────────────────
+  // ── Tipo de comprobante + N° de orden ────────────────────────────────────
+  t.left().bold(true).cols('NOTA DE VENTA', 'Nro. ' + nOrden).bold(false);
+  t.rule('-');
+
+  // ── Fecha / Hora / Mesa /Llevar ──────────────────────────────────────────
+  t.left().cols('Fecha: ' + fecha, hora);
   if (esLlevar) {
-    t.center().dbl().bold(true).line('PARA LLEVAR').normal().bold(false);
-    t.center().dbl().bold(true).line('# ' + nOrden).normal().bold(false);
+    t.left().line('PARA LLEVAR — ' + (pedido.nombre_cliente || 'Cliente'));
   } else {
     var mesaNombre = (pedido.mesa && pedido.mesa.nombre) ? pedido.mesa.nombre : '---';
-    t.center().dbl().bold(true).line(mesaNombre.toUpperCase()).normal().bold(false);
-    t.center().dbl().bold(true).line('# ' + nOrden).normal().bold(false);
+    t.left().line(mesaNombre.toUpperCase());
   }
-  t.rule('=');
-
-  // ── Fecha / Hora ──────────────────────────────────────────────────────────
-  t.left().cols('Fecha: ' + fecha, hora);
   t.rule('-');
 
   // ── Items ─────────────────────────────────────────────────────────────────
+  t.left().line('Cant  Descripcion                      Importe');
+  t.rule('-');
   var detalles = pedido.detalles || [];
   for (var i = 0; i < detalles.length; i++) {
     var d    = detalles[i];
@@ -185,26 +187,22 @@ function buildCaja(data) {
     var qty  = d.cantidad;
     var pu   = parseFloat(d.precio).toFixed(2);
     var sub  = (parseFloat(d.precio) * qty).toFixed(2);
-    t.left().bold(true).line(qty + '  ' + prod).bold(false);
-    t.left().line('     ' + sym + ' ' + pu + ' c/u       Sub: ' + sym + ' ' + sub);
-    if (d.nota) t.left().bold(true).dblH().line(' >> ' + d.nota).normal().bold(false);
-    t.rule('-');
+    t.left().cols('  ' + qty + '   ' + prod, sub);
+    if (qty > 1) t.left().line('        (' + sym + ' ' + pu + ' c/u)');
+    if (d.nota) t.left().bold(true).line('      >> ' + d.nota).bold(false);
   }
+  t.rule('-');
 
   // ── Total ─────────────────────────────────────────────────────────────────
-  t.rule('=');
-  t.lf(1);
-  t.center().bold(true).dbl().line('TOTAL').normal().bold(false);
-  t.center().bold(true).dbl().line(sym + ' ' + parseFloat(pedido.total).toFixed(2)).normal().bold(false);
-  t.lf(1);
+  t.left().bold(true).cols('TOTAL ' + sym, total.toFixed(2)).bold(false);
   t.rule('=');
 
   // ── Método de pago ────────────────────────────────────────────────────────
-  t.left().line('Metodo: ' + (metodo_pago === 'efectivo' ? 'Efectivo' : 'QR / Transferencia'));
+  t.left().line('Forma de pago: ' + (metodo_pago === 'efectivo' ? 'Efectivo' : 'QR / Transferencia'));
   t.rule('-');
 
   // ── Pie ───────────────────────────────────────────────────────────────────
-  t.lf(1).center().line('Gracias por su visita!').center().line(nombre).lf(3).cut();
+  t.lf(1).center().line('Gracias por su preferencia').center().line(nombre).lf(3).cut();
   return t.build();
 }
 

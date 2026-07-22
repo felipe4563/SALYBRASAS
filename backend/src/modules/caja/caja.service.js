@@ -98,14 +98,24 @@ async function listarGastos(sesion_id, alcance) {
   });
 }
 
-async function cerrar(sesion_id, usuario_id, denominaciones = [], alcance) {
+async function cerrar(sesion_id, usuario_id, { denominaciones = [], monto_cierre } = {}, alcance) {
   const sesion = await SesionCaja.findByPk(sesion_id);
   if (!sesion) throw Object.assign(new Error('Sesión no encontrada'), { status: 404 });
   _verificarAlcance(sesion, alcance);
   if (sesion.estado !== 'abierta') throw Object.assign(new Error('La sesión ya está cerrada'), { status: 409 });
   if (sesion.usuario_id !== usuario_id) throw Object.assign(new Error('Solo el cajero que abrió puede cerrar la sesión'), { status: 403 });
 
-  const total_fisico = denominaciones.reduce((sum, d) => sum + (parseFloat(d.denominacion) * parseInt(d.cantidad)), 0);
+  // Dos formas de cerrar: conteo detallado por denominación, o un monto total
+  // anotado directamente. Son mutuamente excluyentes — si hay denominaciones,
+  // el total sale de ahí y se guarda el detalle del arqueo; si no, se usa el
+  // monto anotado y no queda detalle de billetes/monedas.
+  const total_fisico = denominaciones.length > 0
+    ? denominaciones.reduce((sum, d) => sum + (parseFloat(d.denominacion) * parseInt(d.cantidad)), 0)
+    : parseFloat(monto_cierre);
+
+  if (!Number.isFinite(total_fisico) || total_fisico <= 0) {
+    throw Object.assign(new Error('Debes indicar el conteo de efectivo o el monto total para cerrar la caja'), { status: 400 });
+  }
 
   if (denominaciones.length > 0) {
     await DetalleArqueo.destroy({ where: { sesion_caja_id: sesion_id } });

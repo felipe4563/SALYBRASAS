@@ -581,23 +581,30 @@ function ModalAbrirCaja({ caja, onClose, onExito }) {
 /* ─── Modal Cerrar Caja ─────────────────────────────────────────────────── */
 
 function ModalCerrarCaja({ sesion, onClose, onExito }) {
+  const [modo, setModo] = useState('detallado'); // 'detallado' | 'monto'
   const [cantidades, setCantidades] = useState(
     Object.fromEntries(DENOMINACIONES.map(d => [d, '']))
   );
+  const [montoTotal, setMontoTotal] = useState('');
   const [error, setError] = useState(null);
 
   const setCant = (den, val) => setCantidades(c => ({ ...c, [den]: val }));
 
-  const totalFisico = DENOMINACIONES.reduce((sum, d) => {
+  const totalDetallado = DENOMINACIONES.reduce((sum, d) => {
     return sum + (parseInt(cantidades[d]) || 0) * d;
   }, 0);
 
+  const totalFisico = modo === 'detallado' ? totalDetallado : (parseFloat(montoTotal) || 0);
+
   const cerrar = useMutation({
     mutationFn: () => {
-      const denominaciones = DENOMINACIONES
-        .filter(d => parseInt(cantidades[d]) > 0)
-        .map(d => ({ denominacion: d, cantidad: parseInt(cantidades[d]) }));
-      return cerrarCaja(sesion.id, denominaciones);
+      if (modo === 'detallado') {
+        const denominaciones = DENOMINACIONES
+          .filter(d => parseInt(cantidades[d]) > 0)
+          .map(d => ({ denominacion: d, cantidad: parseInt(cantidades[d]) }));
+        return cerrarCaja(sesion.id, { denominaciones });
+      }
+      return cerrarCaja(sesion.id, { monto_cierre: parseFloat(montoTotal) });
     },
     onSuccess: async () => {
       const reporte = await getReporte(sesion.id);
@@ -637,33 +644,75 @@ function ModalCerrarCaja({ sesion, onClose, onExito }) {
         </div>
 
         <div>
-          <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">
-            Conteo de efectivo en caja
-          </p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
-            {DENOMINACIONES.map(d => {
-              const subtotal = (parseInt(cantidades[d]) || 0) * d;
-              return (
-                <div key={d} className="flex items-center gap-2">
-                  <span className="w-14 text-sm font-medium text-gray-700 dark:text-gray-300 text-right shrink-0">
-                    Bs {d}
-                  </span>
-                  <span className="text-gray-400 text-sm">×</span>
-                  <input
-                    type="number" min="0"
-                    value={cantidades[d]}
-                    onChange={e => setCant(d, e.target.value)}
-                    className="w-16 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 text-sm text-center text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
-                  />
-                  {subtotal > 0 && (
-                    <span className="text-xs text-gray-500 dark:text-gray-400">
-                      = Bs {subtotal.toFixed(2)}
-                    </span>
-                  )}
-                </div>
-              );
-            })}
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+              Conteo de efectivo en caja
+            </p>
+            <div className="flex bg-gray-100 dark:bg-gray-700 rounded-lg p-0.5">
+              <button
+                type="button"
+                onClick={() => setModo('detallado')}
+                className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
+                  modo === 'detallado'
+                    ? 'bg-white dark:bg-gray-600 text-gray-800 dark:text-gray-100 shadow-sm'
+                    : 'text-gray-500 dark:text-gray-400'
+                }`}
+              >
+                Conteo detallado
+              </button>
+              <button
+                type="button"
+                onClick={() => setModo('monto')}
+                className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
+                  modo === 'monto'
+                    ? 'bg-white dark:bg-gray-600 text-gray-800 dark:text-gray-100 shadow-sm'
+                    : 'text-gray-500 dark:text-gray-400'
+                }`}
+              >
+                Monto total
+              </button>
+            </div>
           </div>
+
+          {modo === 'detallado' ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
+              {DENOMINACIONES.map(d => {
+                const subtotal = (parseInt(cantidades[d]) || 0) * d;
+                return (
+                  <div key={d} className="flex items-center gap-2">
+                    <span className="w-14 text-sm font-medium text-gray-700 dark:text-gray-300 text-right shrink-0">
+                      Bs {d}
+                    </span>
+                    <span className="text-gray-400 text-sm">×</span>
+                    <input
+                      type="number" min="0"
+                      value={cantidades[d]}
+                      onChange={e => setCant(d, e.target.value)}
+                      className="w-16 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 text-sm text-center text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
+                    />
+                    {subtotal > 0 && (
+                      <span className="text-xs text-gray-500 dark:text-gray-400">
+                        = Bs {subtotal.toFixed(2)}
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div>
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">
+                Monto total contado en efectivo (Bs)
+              </label>
+              <input
+                type="number" min="0" step="0.01" autoFocus
+                value={montoTotal}
+                onChange={e => setMontoTotal(e.target.value)}
+                placeholder="0.00"
+                className="w-full bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl px-4 py-2.5 text-sm text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
+              />
+            </div>
+          )}
         </div>
 
         <div className="border-t border-gray-200 dark:border-gray-700 pt-4 space-y-2">
@@ -696,7 +745,9 @@ function ModalCerrarCaja({ sesion, onClose, onExito }) {
         {totalFisico === 0 && (
           <div className="flex items-center gap-2 px-3 py-2.5 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl text-sm text-amber-700 dark:text-amber-400">
             <AlertCircle className="w-4 h-4 shrink-0" />
-            Ingresa el conteo de billetes y monedas antes de cerrar.
+            {modo === 'detallado'
+              ? 'Ingresa el conteo de billetes y monedas antes de cerrar.'
+              : 'Ingresa el monto total contado antes de cerrar.'}
           </div>
         )}
 
