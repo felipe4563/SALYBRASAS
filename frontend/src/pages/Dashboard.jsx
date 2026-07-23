@@ -30,6 +30,14 @@ const tiene = (u, mod, acc) => u?.permisos?.includes(`${mod}.${acc}`);
 const fmt = v =>
   `Bs ${parseFloat(v ?? 0).toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
+// Fecha en formato YYYY-MM-DD / YYYY-MM usando la hora LOCAL del navegador,
+// no UTC. `.toISOString()` siempre da la fecha en UTC — en Bolivia (UTC-4)
+// eso hace que una venta hecha entre las 20:00 y medianoche caiga en el día
+// siguiente al comparar, mostrando ventas de "anoche" como si fueran de "hoy".
+const fechaLocalYMD = (d) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const fechaLocalYM = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+
 const saludo = () => {
   const h = new Date().getHours();
   if (h < 12) return 'Buenos días';
@@ -169,8 +177,8 @@ export default function Dashboard() {
 
   const hoy = new Date();
   const [tipo,   setTipo]   = useState('mes');
-  const [diaVal, setDiaVal] = useState(hoy.toISOString().slice(0, 10));
-  const [mesVal, setMesVal] = useState(hoy.toISOString().slice(0, 7));
+  const [diaVal, setDiaVal] = useState(fechaLocalYMD(hoy));
+  const [mesVal, setMesVal] = useState(fechaLocalYM(hoy));
   const [añoVal, setAñoVal] = useState(String(hoy.getFullYear()));
 
   /* ─── queries ───────────────────────────────────────────────── */
@@ -205,7 +213,7 @@ export default function Dashboard() {
     ventas.filter(v => {
       if (v.estado !== 'completado') return false;
       const d = new Date(v.creado_en);
-      if (tipo === 'dia') return d.toISOString().slice(0, 10) === diaVal;
+      if (tipo === 'dia') return fechaLocalYMD(d) === diaVal;
       if (tipo === 'mes') {
         const [y, m] = mesVal.split('-').map(Number);
         return d.getFullYear() === y && d.getMonth() === m - 1;
@@ -218,7 +226,7 @@ export default function Dashboard() {
     ventas.filter(v => {
       if (v.estado !== 'cancelado') return false;
       const d = new Date(v.creado_en);
-      if (tipo === 'dia') return d.toISOString().slice(0, 10) === diaVal;
+      if (tipo === 'dia') return fechaLocalYMD(d) === diaVal;
       if (tipo === 'mes') {
         const [y, m] = mesVal.split('-').map(Number);
         return d.getFullYear() === y && d.getMonth() === m - 1;
@@ -284,7 +292,7 @@ export default function Dashboard() {
     if (tipo === 'dia') {
       return Array.from({ length: 18 }, (_, i) => {
         const hora = i + 6;
-        const match = v => new Date(v.creado_en).getHours() === hora && new Date(v.creado_en).toISOString().slice(0, 10) === diaVal;
+        const match = v => new Date(v.creado_en).getHours() === hora && fechaLocalYMD(new Date(v.creado_en)) === diaVal;
         return {
           label: `${String(hora).padStart(2, '0')}h`,
           cobrados:   ventas.filter(v => v.estado === 'completado' && match(v)).length,
@@ -387,13 +395,13 @@ export default function Dashboard() {
               <div className="flex items-center gap-2 flex-1 min-w-0">
                 <CalendarDays className="w-4 h-4 text-gray-400 flex-shrink-0" />
                 {tipo === 'dia' && (
-                  <input type="date" value={diaVal} max={hoy.toISOString().slice(0, 10)}
+                  <input type="date" value={diaVal} max={fechaLocalYMD(hoy)}
                     onChange={e => setDiaVal(e.target.value)}
                     className="flex-1 min-w-0 text-xs sm:text-sm px-2 sm:px-3 py-1.5 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   />
                 )}
                 {tipo === 'mes' && (
-                  <input type="month" value={mesVal} max={hoy.toISOString().slice(0, 7)}
+                  <input type="month" value={mesVal} max={fechaLocalYM(hoy)}
                     onChange={e => setMesVal(e.target.value)}
                     className="flex-1 min-w-0 text-xs sm:text-sm px-2 sm:px-3 py-1.5 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   />
